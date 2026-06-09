@@ -1,0 +1,30 @@
+:root {
+    --bg: #f5f7fb;
+    --surface: #ffffff;
+    --surface-soft: #f2f5fa;
+    --surface-border: #dfe5ee;
+    --border: #dbe3ef;
+    --border-strong: #cbd5e1;
+    --surface-muted: #eef3fa;
+
+    --text-primary: #1e2a3b;
+    --text-secondary: #7b8798;
+    --text-muted: #99a4b2;
+
+    --primary: #212b72;
+    --primary-hover: #1b245f;
+    --primary-soft: #e8ecfb;
+
+    --purple-soft: #f1ebff;
+    --purple: #7447db;
+    --danger: #ef4a4a;
+
+    --shadow-sm: 0 8px 20px rgba(16, 24, 40, 0.04);
+    --shadow-md: 0 10px 30px rgba(23, 30, 52, 0.08);
+
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+
+    --font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}

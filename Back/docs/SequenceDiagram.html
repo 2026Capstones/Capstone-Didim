@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>채용 플랫폼 시퀀스 다이어그램</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Pretendard', sans-serif; }
+        /* 초기 렌더링 시 깜빡임 방지용 */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; overflow-x: auto; text-align: center; }
+        .mermaid svg { margin: 0 auto; max-width: 85%; height: auto; }
+    </style>
+</head>
+<body class="bg-slate-50 p-4 md:p-8 text-slate-800">
+
+    <div class="max-w-6xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+        <!-- Header -->
+        <div class="bg-slate-800 text-white p-6 border-b border-slate-200">
+            <h1 class="text-2xl md:text-3xl font-bold">채용공고 & 취업 지원 서비스 시퀀스 다이어그램</h1>
+            <p class="text-slate-300 mt-2 text-sm md:text-base">관리자와 학생 간의 상호작용 및 서버, AI, DB의 처리 흐름을 나타냅니다.</p>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="flex overflow-x-auto bg-slate-100 border-b border-slate-200 p-2 space-x-2 scrollbar-hide">
+            <button id="btn1" onclick="window.showTab(1)" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors duration-200 bg-slate-800 text-white shadow-sm">
+                1. 채용공고 업로드
+            </button>
+            <button id="btn2" onclick="window.showTab(2)" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors duration-200 bg-white text-slate-600 hover:bg-slate-200">
+                2. 이력/포트폴리오
+            </button>
+            <button id="btn3" onclick="window.showTab(3)" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors duration-200 bg-white text-slate-600 hover:bg-slate-200">
+                3. 자소서 생성
+            </button>
+            <button id="btn4" onclick="window.showTab(4)" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors duration-200 bg-white text-slate-600 hover:bg-slate-200">
+                4. 면접 시뮬레이션
+            </button>
+            <button id="btn5" onclick="window.showTab(5)" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors duration-200 bg-white text-slate-600 hover:bg-slate-200">
+                5. 매칭 및 추천
+            </button>
+        </div>
+
+        <!-- Diagram Containers -->
+        <div id="diagram-container" class="relative min-h-[500px] opacity-0 transition-opacity duration-300">
+            
+            <!-- Tab 1: 공고 업로드 -->
+            <div id="tab1" class="tab-content w-full p-6 active">
+                <pre class="mermaid">
+                    %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'primaryBorderColor': '#94a3b8', 'actorBkg': '#f8fafc', 'actorBorder': '#475569', 'signalColor': '#334155', 'signalTextColor': '#1e293b', 'noteBkgColor': '#fff7ed', 'noteBorderColor': '#fed7aa'}}}%%
+                    sequenceDiagram
+                        autonumber
+                        actor Admin as 관리자(웹)
+                        participant Server as 서버
+                        participant PDF as PDF 처리
+                        participant AI as AI(H100)
+                        participant DB as DB
+                        participant Storage as 파일저장소
+
+                        rect rgb(241, 245, 249)
+                            note over Admin, Storage: 1. (관리자) 채용공고 업로드
+                            Admin->>Server: 채용공고 PDF 업로드 요청
+                            Server->>Server: 형식/크기 검증
+                            Server->>Storage: 원본 PDF 저장 (pdf_path)
+                            Server->>PDF: PDFBox로 텍스트 추출 요청
+                            PDF-->>Server: 텍스트 반환 (pdf_text) / 실패시 종료
+                            Server->>AI: 공고 추출 프롬프트 + pdf_text 전송
+                            AI-->>Server: 분석 JSON(기업명/직무/조건 등) 반환
+                            Server->>DB: JOB_POSTING 원본/텍스트/정제필드 저장 (+ requires_review)
+                            Server-->>Admin: 추출 결과 미리보기 + requires_review 전달
+                            Admin->>Server: 검수/수정 저장
+                            Server->>DB: 최종 게시 상태로 반영 (덮어쓰기 정책)
+                        end
+                </pre>
+            </div>
+
+            <!-- Tab 2: 포트폴리오 반영 -->
+            <div id="tab2" class="tab-content w-full p-6">
+                <pre class="mermaid">
+                    %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'primaryBorderColor': '#94a3b8', 'actorBkg': '#f8fafc', 'actorBorder': '#475569', 'signalColor': '#334155', 'signalTextColor': '#1e293b', 'noteBkgColor': '#fff7ed', 'noteBorderColor': '#fed7aa'}}}%%
+                    sequenceDiagram
+                        autonumber
+                        actor Student as 학생(웹)
+                        participant Server as 서버
+                        participant PDF as PDF 처리
+                        participant AI as AI(H100)
+                        participant DB as DB
+
+                        rect rgb(241, 245, 249)
+                            note over Student, DB: 2. (학생) 이력 PDF 업로드 → 포트폴리오 반영
+                            Student->>Server: 이력 PDF 업로드 요청
+                            Server->>Server: 형식/크기 검증
+                            Server->>PDF: 텍스트 추출 요청
+                            PDF-->>Server: 텍스트 반환
+                            Server->>AI: 이력 분류/추출 요청
+                            AI-->>Server: added_items 배열(카테고리/이름 등) 반환
+                            Server->>DB: PORTFOLIO에 append (중복 기준 판단 후 업데이트/스킵)
+                            Server-->>Student: 자동 추가 결과 + 반영 상태 반환
+                            Student->>Server: 포트폴리오 5개 항목 조회/수정/삭제
+                            Server->>DB: PORTFOLIO 갱신
+                        end
+                </pre>
+            </div>
+
+            <!-- Tab 3: 자소서 생성 -->
+            <div id="tab3" class="tab-content w-full p-6">
+                <pre class="mermaid">
+                    %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'primaryBorderColor': '#94a3b8', 'actorBkg': '#f8fafc', 'actorBorder': '#475569', 'signalColor': '#334155', 'signalTextColor': '#1e293b', 'noteBkgColor': '#fff7ed', 'noteBorderColor': '#fed7aa'}}}%%
+                    sequenceDiagram
+                        autonumber
+                        actor Student as 학생(웹)
+                        participant Server as 서버
+                        participant AI as AI(H100)
+                        participant DB as DB
+
+                        rect rgb(241, 245, 249)
+                            note over Student, DB: 3. (학생) 공고 선택 → 자소서 생성/저장/조회
+                            Student->>Server: job_id로 자소서 생성 요청
+                            Server->>DB: JOB_POSTING + PORTFOLIO 조회
+                            DB-->>Server: 컨텍스트 데이터 반환
+                            Server->>AI: 자소서 생성 요청 (타임아웃 30초)
+                            opt 타임아웃 예외 처리
+                                Server->>Server: 1회 재시도 (실패 시 OpenAI 전환 또는 실패 반환)
+                            end
+                            AI-->>Server: 자소서 텍스트 반환 + 처리 시간 기록
+                            Server->>DB: RESUME 저장 (user_id, job_id, text 등)
+                            Server-->>Student: resume_id + 생성 결과 반환
+                            Student->>Server: 자소서 조회/재생성 요청
+                            Server->>DB: RESUME 조회 / 정책에 따라 재생성 처리
+                        end
+                </pre>
+            </div>
+
+            <!-- Tab 4: 면접 시뮬레이션 -->
+            <div id="tab4" class="tab-content w-full p-6">
+                <pre class="mermaid">
+                    %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'primaryBorderColor': '#94a3b8', 'actorBkg': '#f8fafc', 'actorBorder': '#475569', 'signalColor': '#334155', 'signalTextColor': '#1e293b', 'noteBkgColor': '#fff7ed', 'noteBorderColor': '#fed7aa'}}}%%
+                    sequenceDiagram
+                        autonumber
+                        actor Student as 학생(웹)
+                        participant Server as 서버
+                        participant AI as AI(H100)
+                        participant DB as DB
+
+                        rect rgb(241, 245, 249)
+                            note over Student, DB: 4. (학생) AI 면접 시뮬레이션(텍스트)
+                            note right of Student: 영상은 브라우저에서 처리,<br/>서버 저장 없음 (안내 제공)
+                            Student->>Server: 면접 세션 생성 요청
+                            Server->>DB: INTERVIEW 생성
+                            Server->>DB: 공통 질문 풀에서 랜덤 N개 선택 후 INTERVIEW_QA 저장
+                            Server->>AI: 직무/기업(공고) 기반 추가 질문 생성 요청
+                            AI-->>Server: 질문 반환
+                            Server->>DB: INTERVIEW_QA(ai) 질문 추가 저장
+                            Student->>Server: 질문별 텍스트 답변 제출
+                            Server->>AI: 답변 평가 요청
+                            AI-->>Server: feedback + score(0~100) 반환
+                            Server->>DB: 피드백/점수/총점 저장
+                            Server-->>Student: 피드백/점수/총점 제공
+                        end
+                </pre>
+            </div>
+
+            <!-- Tab 5: 매칭 및 추천 -->
+            <div id="tab5" class="tab-content w-full p-6">
+                <pre class="mermaid">
+                    %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'primaryBorderColor': '#94a3b8', 'actorBkg': '#f8fafc', 'actorBorder': '#475569', 'signalColor': '#334155', 'signalTextColor': '#1e293b', 'noteBkgColor': '#fff7ed', 'noteBorderColor': '#fed7aa'}}}%%
+                    sequenceDiagram
+                        autonumber
+                        actor Student as 학생(웹)
+                        participant Server as 서버
+                        participant AI as AI(H100)
+                        participant DB as DB
+
+                        rect rgb(241, 245, 249)
+                            note over Student, DB: 5. (학생) 매칭 점수 산출 → 추천
+                            Student->>Server: 매칭/추천 조회 (또는 트리거)
+                            Server->>DB: PORTFOLIO + JOB_POSTING 로드
+                            DB-->>Server: 데이터 반환
+                            Server->>AI: match_score(0~100) + reason 생성 요청 (또는 규칙엔진)
+                            AI-->>Server: 매칭 결과 반환
+                            Server->>DB: MATCH_RESULT 저장 (중복 방지/재계산 정책)
+                            Server-->>Student: 추천 공고 리스트 반환 (점수 내림차순)
+                        end
+                </pre>
+            </div>
+            
+        </div>
+        
+        <div class="bg-slate-50 p-4 border-t border-slate-200 text-sm text-slate-500 text-center">
+            Diagram rendered with Mermaid.js
+        </div>
+    </div>
+
+    <!-- Script to handle Mermaid and Tabs -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        
+        // 1. 렌더링 설정 (수동 트리거)
+        mermaid.initialize({ 
+            startOnLoad: false,
+            sequence: {
+                messageMargin: 30,
+                actorMargin: 40,
+                useMaxWidth: true
+            }
+        });
+
+        // 탭 전환 로직 (전역 접근 가능하도록 설정)
+        window.showTab = function(tabIndex) {
+            // 모든 탭 컨텐츠 숨기기
+            document.querySelectorAll('.tab-content').forEach(el => {
+                el.classList.remove('active');
+            });
+            
+            // 모든 버튼 스타일 초기화 (비활성 상태)
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('bg-slate-800', 'text-white', 'shadow-sm');
+                el.classList.add('bg-white', 'text-slate-600', 'hover:bg-slate-200');
+            });
+
+            // 선택한 탭 보이기
+            document.getElementById('tab' + tabIndex).classList.add('active');
+            
+            // 선택한 버튼 활성화 스타일 적용
+            const activeBtn = document.getElementById('btn' + tabIndex);
+            activeBtn.classList.remove('bg-white', 'text-slate-600', 'hover:bg-slate-200');
+            activeBtn.classList.add('bg-slate-800', 'text-white', 'shadow-sm');
+        };
+
+        // DOM 로드 후 Mermaid 강제 렌더링을 진행한 다음 opacity를 조정해 부드럽게 보여주기
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 처음에는 모든 탭을 보이게(display:flex) 만들어 Mermaid가 올바른 width/height를 계산하게 함
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('active'));
+            
+            // 다이어그램 렌더링
+            await mermaid.run({
+                nodes: document.querySelectorAll('.mermaid')
+            });
+
+            // 렌더링 완료 후 1번 탭만 남기고 숨김, 컨테이너 서서히 나타남
+            window.showTab(1);
+            document.getElementById('diagram-container').classList.remove('opacity-0');
+            document.getElementById('diagram-container').classList.add('opacity-100');
+        });
+    </script>
+</body>
+</html>

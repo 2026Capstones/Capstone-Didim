@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+openai
+pydantic
+python-dotenv
+moviepy
+librosa
+opencv-python
+mediapipe
+numpy
+matplotlib

@@ -1,0 +1,249 @@
+<svg width="820" height="280" viewBox="-190 -108 850 365" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="didimHeroTitle didimHeroDesc">
+    <title id="didimHeroTitle">디딤 커리어 단계 성장 일러스트</title>
+    <desc id="didimHeroDesc">세 명의 손그림 캐릭터가 학교 기록, 자소서, 면접과 탐색 단계를 지나 도착 지점으로 올라가는 장면</desc>
+    <style>
+        .didim-line {
+            stroke: #102A72;
+            stroke-width: 6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .didim-thin {
+            stroke: #102A72;
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .didim-accent {
+            stroke: #102A72;
+        }
+
+        .didim-soft-fill {
+            fill: #F3F7FF;
+        }
+
+        .float-left,
+        .float-center,
+        .float-right {
+            transform-box: fill-box;
+            transform-origin: center;
+            animation: didimFloat 5.4s ease-in-out infinite;
+        }
+
+        .float-center {
+            animation-delay: -1.2s;
+        }
+
+        .float-right {
+            animation-delay: -2.4s;
+        }
+
+        .document,
+        .laptop,
+        .flag {
+            transform-box: fill-box;
+            transform-origin: center;
+            animation: didimWiggle 5.4s ease-in-out infinite;
+        }
+
+        .laptop {
+            animation-delay: -1.4s;
+        }
+
+        .flag {
+            animation-delay: -2.2s;
+        }
+
+        .step-study,
+        .step-left,
+        .step-center,
+        .step-right {
+            opacity: 0;
+        }
+
+        .step-study {
+            animation: didimStepStudy 7.2s ease-in-out infinite;
+        }
+
+        .step-left {
+            animation: didimStepLeft 7.2s ease-in-out infinite;
+        }
+
+        .step-center {
+            animation: didimStepCenter 7.2s ease-in-out infinite;
+        }
+
+        .step-right {
+            animation: didimStepRight 7.2s ease-in-out infinite;
+        }
+
+        @keyframes didimFloat {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            45% {
+                transform: translateY(-4px);
+            }
+        }
+
+        @keyframes didimWiggle {
+            0%, 100% {
+                transform: rotate(0deg);
+            }
+            45% {
+                transform: rotate(-3deg);
+            }
+            70% {
+                transform: rotate(2deg);
+            }
+        }
+
+        @keyframes didimStepStudy {
+            0%, 5% {
+                opacity: 0;
+            }
+            14%, 24% {
+                opacity: 1;
+            }
+            36%, 100% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes didimStepLeft {
+            0%, 22% {
+                opacity: 0;
+            }
+            32%, 42% {
+                opacity: 1;
+            }
+            54%, 100% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes didimStepCenter {
+            0%, 44% {
+                opacity: 0;
+            }
+            54%, 64% {
+                opacity: 1;
+            }
+            76%, 100% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes didimStepRight {
+            0%, 66% {
+                opacity: 0;
+            }
+            78%, 90% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .float-left,
+            .float-center,
+            .float-right,
+            .document,
+            .laptop,
+            .flag,
+            .step-study,
+            .step-left,
+            .step-center,
+            .step-right {
+                animation: none;
+                opacity: 1;
+            }
+        }
+    </style>
+
+    <g id="stairs" class="stairs">
+        <path class="didim-thin" d="M-184 236H132V202H222V166H312V128H402V90H640" />
+        <path class="didim-thin" d="M-184 246H660" opacity="0.25" />
+    </g>
+
+    <g id="character-study" class="character-study step-study" transform="translate(-176 0)">
+        <g class="float-left">
+            <circle class="didim-line" cx="44" cy="132" r="17" />
+            <path class="didim-line" d="M44 149C46 162 46 172 44 184" />
+            <path class="didim-line" d="M43 164L24 180" />
+            <path class="didim-line" d="M45 164L70 177" />
+            <path class="didim-thin didim-soft-fill" d="M6 184H118V224H6Z" />
+            <path class="didim-thin" d="M18 224V236" />
+            <path class="didim-thin" d="M104 224V236" />
+            <g id="study-book" class="document">
+                <path class="didim-thin didim-soft-fill" d="M66 164H108V184H66Z" />
+                <path class="didim-thin" d="M74 172H100M74 179H94" />
+            </g>
+        </g>
+    </g>
+
+    <g id="character-left" class="character-left step-left" transform="translate(0 30)">
+        <g class="float-left">
+            <circle class="didim-line" cx="92" cy="112" r="18" />
+            <path class="didim-line" d="M92 131C94 146 95 158 93 173" />
+            <path class="didim-line" d="M92 146L72 158" />
+            <path class="didim-line" d="M94 147L116 137" />
+            <path class="didim-line" d="M93 173L78 199" />
+            <path class="didim-line" d="M94 173L116 190" />
+            <g id="document" class="document">
+                <path class="didim-thin didim-soft-fill" d="M52 134H82V176H52Z" />
+                <path class="didim-thin" d="M58 146H75M58 156H72M58 166H76" />
+            </g>
+        </g>
+    </g>
+
+    <g id="character-center" class="character-center step-center" transform="translate(-16 -8)">
+        <g class="float-center">
+            <circle class="didim-line" cx="252" cy="74" r="18" />
+            <path class="didim-line" d="M252 93C255 109 256 121 253 137" />
+            <path class="didim-line" d="M251 109L226 120" />
+            <path class="didim-line" d="M255 110L282 107" />
+            <path class="didim-line" d="M253 137L234 164" />
+            <path class="didim-line" d="M254 137L278 154" />
+            <g id="laptop" class="laptop">
+                <path class="didim-thin didim-soft-fill" d="M284 89H333V120H284Z" />
+                <path class="didim-thin" d="M278 127H339" />
+                <path class="didim-thin" d="M294 101H322" />
+            </g>
+        </g>
+    </g>
+
+    <g id="character-right" class="character-right step-right" transform="translate(10 -35)">
+        <g class="float-right">
+            <circle class="didim-line" cx="410" cy="30" r="18" />
+            <path class="didim-line" d="M410 49C413 65 413 77 410 92" />
+            <path class="didim-line" d="M410 66L388 77" />
+            <path class="didim-line" d="M412 65L440 41" />
+            <path class="didim-line" d="M410 92L392 119" />
+            <path class="didim-line" d="M411 92L434 110" />
+            <g id="flag" class="flag">
+                <path class="didim-thin" d="M444 39V7" />
+                <path class="didim-thin didim-soft-fill" d="M444 8C460 1 472 10 486 2V34C472 42 460 32 444 39Z" />
+            </g>
+            <g id="company-building" class="company-building">
+                <path class="didim-thin didim-soft-fill" d="M492 50H606V125H492Z" />
+                <path class="didim-thin" d="M512 50V30H574V50" />
+                <path class="didim-thin" d="M514 70H528M548 70H562M582 70H596" />
+                <path class="didim-thin" d="M514 90H528M548 90H562M582 90H596" />
+            </g>
+        </g>
+    </g>
+
+    <g id="small-signals" class="small-signals" opacity="0.8">
+        <path class="didim-thin" d="M-28 182H2" />
+        <path class="didim-thin" d="M-8 174L3 182L-8 190" />
+        <path class="didim-thin" d="M154 141H184" />
+        <path class="didim-thin" d="M174 133L185 141L174 149" />
+        <path class="didim-thin" d="M334 62H364" />
+        <path class="didim-thin" d="M354 54L365 62L354 70" />
+    </g>
+</svg>
