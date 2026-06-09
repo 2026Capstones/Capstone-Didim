@@ -20,6 +20,8 @@ function ProfileMenu() {
     const moveTo = (path: string) => {
         if (path === '/login') {
             window.localStorage.removeItem('didim:portfolio-sync-state');
+            window.localStorage.removeItem('token'); // 로그아웃 시 토큰 삭제 추가
+            // 필요한 경우 window.localStorage.clear(); 를 사용하여 전부 초기화할 수도 있습니다.
         }
 
         setOpen(false);
@@ -52,6 +54,9 @@ function ProfileMenu() {
                 <div className="profile-menu-dropdown">
                     <button type="button" className="profile-menu-item" onClick={() => moveTo('/my-page')}>
                         마이페이지
+                    </button>
+                    <button type="button" className="profile-menu-item" onClick={() => moveTo('/admin')}>
+                        관리자 페이지
                     </button>
                     <button type="button" className="profile-menu-item danger" onClick={() => moveTo('/login')}>
                         로그아웃

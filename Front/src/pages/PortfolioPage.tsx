@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, DragEvent, ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { activities, awards, certificates, grades, projects } from '../mocks/career';
-import type { PortfolioActivity, PortfolioAward, PortfolioCertificate, PortfolioProject } from '../types/career';
+import type { CourseGrade } from '../types/career';
 import './PortfolioPage.css';
 
 const PORTFOLIO_SYNC_STORAGE_KEY = 'didim:portfolio-sync-state';
-const PORTFOLIO_PROJECTS_STORAGE_KEY = 'didim:portfolio-projects';
 const PORTFOLIO_UPLOADS_STORAGE_KEY = 'didim:portfolio-uploads';
 const INITIAL_VISIBLE_COUNT = 2;
 const LOAD_MORE_COUNT = 5;
@@ -28,20 +26,6 @@ const getCurrentAcademicFilter = () => {
         semester: month >= 3 && month <= 8 ? '1' : '2',
     };
 };
-
-function getStoredProjects() {
-    try {
-        const rawValue = window.localStorage.getItem(PORTFOLIO_PROJECTS_STORAGE_KEY);
-
-        if (!rawValue) {
-            return projects;
-        }
-
-        return JSON.parse(rawValue) as PortfolioProject[];
-    } catch {
-        return projects;
-    }
-}
 
 function getStoredUploadedFiles() {
     try {
@@ -74,6 +58,18 @@ function PortfolioPage() {
     const [syncState, setSyncState] = useState(() =>
         window.localStorage.getItem(PORTFOLIO_SYNC_STORAGE_KEY) === 'done' ? 'done' : 'idle'
     );
+    
+    // 서버 데이터를 저장할 상태 추가
+    const [portfolioData, setPortfolioData] = useState({
+        gpa: null as number | null,
+        grades: [] as CourseGrade[],
+        awards: [] as any[],
+        scholarships: [] as any[],
+        certificates: [] as any[],
+        activities: [] as any[],
+        projects: [] as any[],
+    });
+
     const isSynced = syncState === 'done';
     const currentAcademicFilter = useMemo(() => getCurrentAcademicFilter(), []);
     const [selectedYear, setSelectedYear] = useState(currentAcademicFilter.year);
@@ -86,7 +82,6 @@ function PortfolioPage() {
         activities: INITIAL_VISIBLE_COUNT,
         projects: INITIAL_VISIBLE_COUNT,
     });
-    const [projectItems, setProjectItems] = useState(getStoredProjects);
     const [uploadedFiles, setUploadedFiles] = useState(getStoredUploadedFiles);
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -96,25 +91,52 @@ function PortfolioPage() {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
     const gradeYears = useMemo(
-        () => Array.from(new Set([currentAcademicFilter.year, ...grades.map((item) => item.term.split('-')[0])])).sort((a, b) => Number(b) - Number(a)),
-        [currentAcademicFilter.year]
+        () => Array.from(new Set([currentAcademicFilter.year, ...portfolioData.grades.map((item) => item.term.split('-')[0])])).sort((a, b) => Number(b) - Number(a)),
+        [currentAcademicFilter.year, portfolioData.grades]
     );
 
     const filteredGrades = useMemo(
         () =>
-            grades.filter((item) => {
+            portfolioData.grades.filter((item) => {
                 const [year, semester] = item.term.split('-');
                 return appliedYear === year && appliedSemester === semester;
             }),
-        [appliedSemester, appliedYear]
+        [appliedSemester, appliedYear, portfolioData.grades]
     );
 
-    const handleRefresh = () => {
+    const parsePortfolioData = (data: any) => {
+        setPortfolioData({
+            gpa: data.gpa || null,
+            grades: data.grades || [],
+            awards: data.awards || [],
+            scholarships: data.scholarships || [],
+            certificates: data.certifications || [],
+            activities: data.volunteer || [],
+            projects: data.projects || [],
+        });
+    };
+
+    const handleRefresh = async () => {
         setSyncState('syncing');
-        window.setTimeout(() => {
-            window.localStorage.setItem(PORTFOLIO_SYNC_STORAGE_KEY, 'done');
-            setSyncState('done');
-        }, 700);
+        try {
+            const response = await fetch('/api/portfolio/lms', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                }
+            });
+            if (response.ok) {
+                const json = await response.json();
+                if (json.data) parsePortfolioData(json.data);
+                window.localStorage.setItem(PORTFOLIO_SYNC_STORAGE_KEY, 'done');
+                setSyncState('done');
+            } else {
+                setSyncState('idle');
+            }
+        } catch (error) {
+            setSyncState('idle');
+            console.error('LMS sync error:', error);
+        }
     };
 
     const handleGradeSearch = () => {
@@ -129,8 +151,8 @@ function PortfolioPage() {
         }));
     };
 
-    const visibleProjectItems = isSynced ? projectItems.slice(0, visibleCounts.projects) : [];
-    const selectedVisibleProjectCount = visibleProjectItems.filter((project) => selectedProjectIds.includes(project.id)).length;
+    const visibleProjectItems = isSynced ? portfolioData.projects.slice(0, visibleCounts.projects) : [];
+    const selectedVisibleProjectCount = visibleProjectItems.filter((project) => selectedProjectIds.includes(project.id || project.title)).length;
     const isAllVisibleProjectsSelected = visibleProjectItems.length > 0 && selectedVisibleProjectCount === visibleProjectItems.length;
 
     const closeProjectEditing = () => {
@@ -146,71 +168,152 @@ function PortfolioPage() {
 
     const toggleAllVisibleProjects = () => {
         if (isAllVisibleProjectsSelected) {
-            setSelectedProjectIds((prev) => prev.filter((id) => !visibleProjectItems.some((project) => project.id === id)));
+            setSelectedProjectIds((prev) => prev.filter((id) => !visibleProjectItems.some((project) => (project.id || project.title) === id)));
             return;
         }
 
-        setSelectedProjectIds((prev) => Array.from(new Set([...prev, ...visibleProjectItems.map((project) => project.id)])));
+        setSelectedProjectIds((prev) => Array.from(new Set([...prev, ...visibleProjectItems.map((project) => project.id || project.title)])));
     };
 
-    const confirmProjectDelete = () => {
-        setProjectItems((prev) => prev.filter((project) => !selectedProjectIds.includes(project.id)));
+    const confirmProjectDelete = async () => {
+        // 서버와 동기화된 데이터를 직접 삭제하려면 PUT /api/portfolio 요청이 필요합니다.
+        // 현재는 UI 상에서만 삭제 처리되도록 임시 구현합니다. (추후 백엔드 삭제 연동 필요)
+        const updatedProjects = portfolioData.projects.filter((project) => !selectedProjectIds.includes(project.id || project.title));
+        
+        try {
+            await fetch('/api/portfolio', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({ ...portfolioData, projects: updatedProjects })
+            });
+            setPortfolioData(prev => ({ ...prev, projects: updatedProjects }));
+        } catch (error) {
+            console.error('Project delete error', error);
+        }
+
         setDeleteModalOpen(false);
         closeProjectEditing();
     };
 
     const appendPendingFiles = (files: FileList | File[]) => {
-        setPendingFiles((prev) => {
-            const nextFiles = Array.from(files);
-            const existingKeys = new Set(prev.map((file) => `${file.name}-${file.size}-${file.lastModified}`));
-            const uniqueNextFiles = nextFiles.filter((file) => !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`));
+        const nextFiles = Array.from(files);
+        if (nextFiles.length === 0) return;
 
-            return [...prev, ...uniqueNextFiles];
+        setPendingFiles((prev) => {
+            // 기존 파일과 새로 추가된 파일 합치기 (동일 파일명 제외)
+            const existingNames = new Set(prev.map(f => f.name));
+            const uniqueNewFiles = nextFiles.filter(f => !existingNames.has(f.name));
+            return [...prev, ...uniqueNewFiles];
         });
     };
 
     const handleUploadInputChange = (event: ChangeEvent<HTMLInputElement>) => {
-        if (event.target.files) {
-            appendPendingFiles(event.target.files);
+        const files = event.target.files;
+        if (files && files.length > 0) {
+            appendPendingFiles(files);
         }
-
+        // 이 시점에서는 value를 초기화해도 이미 appendPendingFiles로 전달됨
         event.target.value = '';
     };
 
     const handleUploadDrop = (event: DragEvent<HTMLLabelElement>) => {
         event.preventDefault();
         setIsUploadDragging(false);
-        appendPendingFiles(event.dataTransfer.files);
+        if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+            appendPendingFiles(event.dataTransfer.files);
+        }
     };
 
     const closeUploadModal = () => {
         setUploadModalOpen(false);
         setPendingFiles([]);
         setIsUploadDragging(false);
+        setIsSaving(false);
     };
 
-    const saveUploadedFiles = () => {
-        const uploadedAt = new Date().toISOString();
-        const nextUploadedFiles = pendingFiles.map((file) => ({
-            id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
-            name: file.name,
-            size: file.size,
-            type: file.type || '파일',
-            uploadedAt,
-        }));
+    const [isSaving, setIsSaving] = useState(false);
 
-        setUploadedFiles((prev) => [...nextUploadedFiles, ...prev]);
-        closeUploadModal();
+    const saveUploadedFiles = async () => {
+        if (pendingFiles.length === 0) {
+            alert('업로드할 파일을 먼저 선택해주세요.');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const formData = new FormData();
+            // 백엔드가 현재 단일 파일만 지원하므로 첫 번째 파일 전송
+            formData.append('file', pendingFiles[0]);
+
+            console.log('Sending upload request to /api/portfolio/upload...');
+            const response = await fetch('/api/portfolio/upload', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                alert('파일 분석이 완료되었습니다!');
+                
+                // 업로드 성공 후 리스트 갱신 (서버에서 받은 데이터가 있으면 반영)
+                if (data.data) {
+                    parsePortfolioData(data.data);
+                    const uploadedAt = new Date().toISOString();
+                    const newEntry: UploadedPortfolioFile = {
+                        id: `file-${Date.now()}`,
+                        name: pendingFiles[0].name,
+                        size: pendingFiles[0].size,
+                        type: pendingFiles[0].type || 'PDF',
+                        uploadedAt,
+                    };
+                    setUploadedFiles(prev => [newEntry, ...prev]);
+                }
+                closeUploadModal();
+            } else {
+                const errorBody = await response.text();
+                console.error('Upload failed:', errorBody);
+                alert('파일 분석에 실패했습니다. 파일 형식을 확인해주세요.');
+            }
+        } catch (error) {
+            console.error('File upload network error:', error);
+            alert('서버와 통신할 수 없습니다.');
+        } finally {
+            setIsSaving(false);
+        }
     };
+
+    useEffect(() => {
+        const fetchPortfolio = async () => {
+            try {
+                const response = await fetch('/api/portfolio', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.data) {
+                        parsePortfolioData(data.data);
+                        setSyncState('done');
+                    }
+                }
+            } catch (error) {
+                console.error('Fetch portfolio error:', error);
+            }
+        };
+        fetchPortfolio();
+    }, []);
 
     useEffect(() => {
         if (!sectionId) return;
         document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, [sectionId]);
-
-    useEffect(() => {
-        window.localStorage.setItem(PORTFOLIO_PROJECTS_STORAGE_KEY, JSON.stringify(projectItems));
-    }, [projectItems]);
 
     useEffect(() => {
         window.localStorage.setItem(PORTFOLIO_UPLOADS_STORAGE_KEY, JSON.stringify(uploadedFiles));
@@ -248,15 +351,15 @@ function PortfolioPage() {
                 <div className="portfolio-summary-stats">
                     <div className="portfolio-summary-item">
                         <span>전체 평점</span>
-                        <strong>{isSynced ? '3.9' : '-'} <em>/ 4.5</em></strong>
+                        <strong>{isSynced && portfolioData.gpa ? portfolioData.gpa.toFixed(2) : '-'} <em>/ 4.5</em></strong>
                     </div>
                     <div className="portfolio-summary-item">
                         <span>전공 평점</span>
-                        <strong>{isSynced ? '4.1' : '-'} <em>/ 4.5</em></strong>
+                        <strong>{isSynced && portfolioData.gpa ? portfolioData.gpa.toFixed(2) : '-'} <em>/ 4.5</em></strong>
                     </div>
                     <div className="portfolio-summary-item">
                         <span>수강 과목</span>
-                        <strong>{isSynced ? grades.length : 0} <em>과목</em></strong>
+                        <strong>{isSynced ? portfolioData.grades.length : 0} <em>과목</em></strong>
                     </div>
                 </div>
                 <span className="portfolio-summary-sync">{isSynced ? 'LMS 자동 동기화됨 ›' : syncState === 'syncing' ? '동기화 중...' : 'LMS 연동 전'}</span>
@@ -315,70 +418,70 @@ function PortfolioPage() {
                 )}
             </section>
 
-            <ListSection<PortfolioAward>
+            <ListSection<any>
                 id="awards"
                 title="수상 내역"
-                count={isSynced ? awards.length : 0}
-                items={isSynced ? awards.slice(0, visibleCounts.awards) : []}
+                count={isSynced ? portfolioData.awards.length : 0}
+                items={isSynced ? portfolioData.awards.slice(0, visibleCounts.awards) : []}
                 renderItem={(award) => (
-                    <article className="portfolio-list-item" key={award.title}>
-                        <strong>{award.title}</strong>
-                        <p>{award.organization} · {award.date}</p>
+                    <article className="portfolio-list-item" key={award.name || award.title}>
+                        <strong>{award.name || award.title}</strong>
+                        <p>{award.organization} · {award.year || award.date}</p>
                         <p>{award.description}</p>
                     </article>
                 )}
-                moreButton={renderMoreButton('awards', awards.length)}
+                moreButton={renderMoreButton('awards', portfolioData.awards.length)}
             />
 
-            <ListSection<PortfolioCertificate>
+            <ListSection<any>
                 id="certificates"
                 title="자격증"
-                count={isSynced ? certificates.length : 0}
-                items={isSynced ? certificates.slice(0, visibleCounts.certificates) : []}
+                count={isSynced ? portfolioData.certificates.length : 0}
+                items={isSynced ? portfolioData.certificates.slice(0, visibleCounts.certificates) : []}
                 renderItem={(certificate) => (
-                    <article className="portfolio-list-item" key={certificate.credentialId}>
-                        <strong>{certificate.title}</strong>
-                        <p>{certificate.issuer} · {certificate.date} · {certificate.credentialId}</p>
+                    <article className="portfolio-list-item" key={certificate.credentialId || certificate.name || certificate.title}>
+                        <strong>{certificate.name || certificate.title}</strong>
+                        <p>{certificate.issuer} · {certificate.date}</p>
                         <p>{certificate.description}</p>
                     </article>
                 )}
-                moreButton={renderMoreButton('certificates', certificates.length)}
+                moreButton={renderMoreButton('certificates', portfolioData.certificates.length)}
             />
 
-            <ListSection<PortfolioActivity>
+            <ListSection<any>
                 id="activities"
-                title="활동 / 동아리"
-                count={isSynced ? activities.length : 0}
-                items={isSynced ? activities.slice(0, visibleCounts.activities) : []}
+                title="활동 / 동아리 / 장학금"
+                count={isSynced ? (portfolioData.activities.length + portfolioData.scholarships.length) : 0}
+                items={isSynced ? [...portfolioData.activities, ...portfolioData.scholarships].slice(0, visibleCounts.activities) : []}
                 renderItem={(activity) => (
-                    <article className="portfolio-activity-item" key={activity.title}>
+                    <article className="portfolio-activity-item" key={activity.title || activity.org || activity.name}>
                         <div className="nav-icon small" />
                         <div className="portfolio-activity-copy">
                             <div className="portfolio-activity-top">
-                                <strong>{activity.title}</strong>
-                                <span className="portfolio-activity-role">{activity.role}</span>
+                                <strong>{activity.title || activity.org || activity.name}</strong>
+                                {activity.role && <span className="portfolio-activity-role">{activity.role}</span>}
                             </div>
-                            <span className="portfolio-activity-period">{activity.period}</span>
+                            <span className="portfolio-activity-period">{activity.period || activity.semester || (activity.hours && `${activity.hours}시간`)}</span>
                             <p>{activity.description}</p>
                         </div>
                     </article>
                 )}
-                moreButton={renderMoreButton('activities', activities.length)}
+                moreButton={renderMoreButton('activities', portfolioData.activities.length + portfolioData.scholarships.length)}
             />
 
-            <ListSection<PortfolioProject>
+            <ListSection<any>
                 id="projects"
                 title="프로젝트"
-                count={isSynced ? projectItems.length : 0}
+                count={isSynced ? portfolioData.projects.length : 0}
                 items={visibleProjectItems}
                 renderItem={(project) => (
-                    <article className={`portfolio-project-item${isProjectEditing ? ' is-editing' : ''}`} key={project.id}>
+                    <article className={`portfolio-project-item${isProjectEditing ? ' is-editing' : ''}`} key={project.id || project.title}>
                         {isProjectEditing && (
                             <label className="portfolio-project-check">
                                 <input
                                     type="checkbox"
-                                    checked={selectedProjectIds.includes(project.id)}
-                                    onChange={() => toggleProjectSelection(project.id)}
+                                    checked={selectedProjectIds.includes(project.id || project.title)}
+                                    onChange={() => toggleProjectSelection(project.id || project.title)}
                                     aria-label={`${project.title} 선택`}
                                 />
                             </label>
@@ -392,7 +495,7 @@ function PortfolioPage() {
                         </div>
                     </article>
                 )}
-                moreButton={renderMoreButton('projects', projectItems.length)}
+                moreButton={renderMoreButton('projects', portfolioData.projects.length)}
                 headerActions={isSynced && (
                     <div className="portfolio-project-actions">
                         {isProjectEditing && (
@@ -466,8 +569,10 @@ function PortfolioPage() {
                         )}
 
                         <div className="portfolio-modal-actions">
-                            <button type="button" className="secondary-action-button" onClick={closeUploadModal}>취소</button>
-                            <button type="button" className="primary-action-button" onClick={saveUploadedFiles} disabled={pendingFiles.length === 0}>저장</button>
+                            <button type="button" className="secondary-action-button" onClick={closeUploadModal} disabled={isSaving}>취소</button>
+                            <button type="button" className="primary-action-button" onClick={saveUploadedFiles} disabled={pendingFiles.length === 0 || isSaving}>
+                                {isSaving ? '분석 중...' : '저장'}
+                            </button>
                         </div>
                     </section>
                 </div>

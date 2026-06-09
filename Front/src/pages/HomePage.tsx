@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import didimHeroScene from '../assets/didim-hero-scene.svg';
 import runnerPortfolio from '../assets/img1.png';
@@ -194,20 +194,109 @@ function HomePage() {
     const [syncState, setSyncState] = useState<SyncState>(() =>
         window.localStorage.getItem(PORTFOLIO_SYNC_STORAGE_KEY) === 'done' ? 'done' : 'idle'
     );
-    const prioritizedTasks = [...unfinishedTasks]
-        .map((task) => ({ task, display: getTaskDisplay(task) }))
+    const [resumes, setResumes] = useState<any[]>([]);
+    const [interviewsList, setInterviewsList] = useState<any[]>([]);
+    const [userName, setUserName] = useState('지수');
+    const [portfolioStats, setPortfolioStats] = useState({
+        gpa: '0.0',
+        awardsCount: 0,
+        certificatesCount: 0,
+        activitiesCount: 0,
+        projectsCount: 0
+    });
+
+    useEffect(() => {
+        const fetchData = async () => {
+            const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
+            try {
+                const [resumeRes, interviewRes, portfolioRes] = await Promise.all([
+                    fetch('/api/resume/list', { headers }),
+                    fetch('/api/interview/list', { headers }),
+                    fetch('/api/portfolio', { headers })
+                ]);
+                
+                if (resumeRes.ok) {
+                    const data = await resumeRes.json();
+                    setResumes(data.data || []);
+                }
+                if (interviewRes.ok) {
+                    const data = await interviewRes.json();
+                    setInterviewsList(data.data || []);
+                }
+                if (portfolioRes.ok) {
+                    const data = await portfolioRes.json();
+                    if (data.data) {
+                        if (data.data.user && data.data.user.name) {
+                            setUserName(data.data.user.name);
+                        }
+                        setPortfolioStats({
+                            gpa: data.data.gpa || '0.0',
+                            awardsCount: data.data.awards?.length || 0,
+                            certificatesCount: data.data.certifications?.length || 0,
+                            activitiesCount: data.data.volunteer?.length || 0,
+                            projectsCount: data.data.projects?.length || 0
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Fetch dashboard data error:', error);
+            }
+        };
+        fetchData();
+    }, []);
+
+    // 실제 데이터를 바탕으로 task 생성
+    const realTasks = useMemo(() => {
+        const list = [];
+        if (resumes.length > 0) {
+            list.push({
+                type: 'AI 자소서',
+                title: `${resumes[0].companyName} 지원서`,
+                subtitle: 'D-Day, 작성 중',
+                progress: 80,
+                path: `/cover-letters/${resumes[0].jobId}`
+            });
+        }
+        if (interviewsList.length > 0) {
+            list.push({
+                type: 'AI 면접',
+                title: `${interviewsList[0].companyName} 면접 연습`,
+                subtitle: '피드백 도착함',
+                progress: 100,
+                path: '/interview'
+            });
+        }
+        // 데이터가 없으면 기본값 보이기 (기능 유지)
+        return list.length > 0 ? list : unfinishedTasks;
+    }, [resumes, interviewsList]);
+
+    const prioritizedTasks = realTasks
+        .map((task) => ({ task, display: getTaskDisplay(task as any) }))
         .sort((a, b) => a.display.rank - b.display.rank || b.task.progress - a.task.progress);
     const heroTask = prioritizedTasks[0];
     const supportingTasks = prioritizedTasks.slice(1, 3);
 
-    const startSync = () => {
+    const startSync = async () => {
         if (syncState === 'syncing') return;
 
         setSyncState('syncing');
-        window.setTimeout(() => {
-            window.localStorage.setItem(PORTFOLIO_SYNC_STORAGE_KEY, 'done');
-            setSyncState('done');
-        }, 900);
+        try {
+            const response = await fetch('/api/portfolio/lms', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                }
+            });
+            if (response.ok) {
+                window.localStorage.setItem(PORTFOLIO_SYNC_STORAGE_KEY, 'done');
+                setSyncState('done');
+            } else {
+                setSyncState('idle');
+            }
+        } catch (error) {
+            console.error('LMS sync error:', error);
+            setSyncState('idle');
+        }
     };
 
     const isSynced = syncState === 'done';
@@ -272,7 +361,7 @@ function HomePage() {
 
                 <div className="student-panel">
                     <p>안녕하세요,</p>
-                    <h1>지수님의 커리어 대시보드</h1>
+                    <h1>{userName}님의 커리어 대시보드</h1>
                     <span className="student-hero-copy">
                         학교 기록부터<br />
                         자소서,<br />
@@ -287,10 +376,10 @@ function HomePage() {
                     </div>
 
                     <div className="student-card">
-                        <div className="student-avatar">지</div>
+                        <div className="student-avatar">{userName[0]}</div>
                         <div>
                             <strong>
-                                {userProfile.name}
+                                {userName}
                                 {isSynced && <span className="sync-badge">◎ LMS 연동됨</span>}
                             </strong>
                             <p className="student-school-line">{userProfile.school} <span /> {userProfile.studentId}</p>
@@ -299,11 +388,11 @@ function HomePage() {
                     </div>
 
                     <div className="portfolio-stat-grid">
-                        <Link to="/portfolio/grades"><Icon name="grad" /><strong>{isSynced ? '3.9 / 4.5' : '- / -'}</strong><span>학점</span></Link>
-                        <Link to="/portfolio/awards"><Icon name="award" /><strong>{isSynced ? `${awards.length}건` : '-건'}</strong><span>수상 내역</span></Link>
-                        <Link to="/portfolio/certificates"><Icon name="doc" /><strong>{isSynced ? `${certificates.length}건` : '-건'}</strong><span>자격증</span></Link>
-                        <Link to="/portfolio/activities"><Icon name="activity" /><strong>{isSynced ? `${activities.length}건` : '-건'}</strong><span>활동 / 동아리</span></Link>
-                        <Link to="/portfolio/projects"><Icon name="folder" /><strong>{isSynced ? `${projects.length}건` : '-개'}</strong><span>프로젝트</span></Link>
+                        <Link to="/portfolio/grades"><Icon name="grad" /><strong>{isSynced ? `${portfolioStats.gpa} / 4.5` : '- / -'}</strong><span>학점</span></Link>
+                        <Link to="/portfolio/awards"><Icon name="award" /><strong>{isSynced ? `${portfolioStats.awardsCount}건` : '-건'}</strong><span>수상 내역</span></Link>
+                        <Link to="/portfolio/certificates"><Icon name="doc" /><strong>{isSynced ? `${portfolioStats.certificatesCount}건` : '-건'}</strong><span>자격증</span></Link>
+                        <Link to="/portfolio/activities"><Icon name="activity" /><strong>{isSynced ? `${portfolioStats.activitiesCount}건` : '-건'}</strong><span>활동 / 동아리</span></Link>
+                        <Link to="/portfolio/projects"><Icon name="folder" /><strong>{isSynced ? `${portfolioStats.projectsCount}개` : '-개'}</strong><span>프로젝트</span></Link>
                     </div>
                 </div>
             </div>

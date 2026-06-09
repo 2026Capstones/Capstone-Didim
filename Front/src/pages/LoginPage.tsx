@@ -16,9 +16,9 @@ function LoginPage() {
     const navigate = useNavigate();
 
     const [form, setForm] = useState<LoginFormState>({
-        university: '서울대학교',
-        studentId: '20241234',
-        password: '',
+        university: '디딤대학교',
+        studentId: 'student@didim.com',
+        password: 'password',
         keepLogin: false,
     });
 
@@ -38,9 +38,30 @@ function LoginPage() {
         }));
     };
 
-    const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        navigate('/home');
+        
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: form.studentId,
+                    password: form.password
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                localStorage.setItem('token', data.data.token);
+                navigate('/home');
+            } else {
+                alert('로그인 실패: 정보를 확인해주세요. (테스트용: student@didim.com / password)');
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            alert('서버 연결 중 오류가 발생했습니다.');
+        }
     };
 
     return (
@@ -77,8 +98,8 @@ function LoginPage() {
                     />
 
                     <InputField
-                        label="학번"
-                        placeholder="학번을 입력하세요"
+                        label="학번(혹은 이메일)"
+                        placeholder="학번 혹은 이메일을 입력하세요"
                         value={form.studentId}
                         onChange={handleInputChange('studentId')}
                         icon={

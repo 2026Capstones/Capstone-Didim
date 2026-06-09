@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { interviews, jobPostings } from '../mocks/career';
+import { interviews } from '../mocks/career';
 import type { JobPosting } from '../types/career';
 import { formatDdayFromDaysLeft, getDaysFromDdayText } from '../utils/date';
 import './CoverLetters.css';
 
-const SAVED_JOBS_STORAGE_KEY = 'didim:saved-job-ids';
-const INTERVIEW_ANSWER_ENDPOINT = '/api/interviews/answers';
+const INTERVIEW_ANSWER_ENDPOINT = '/api/interview/answer';
 
 const interviewFeedbacks = [
     {
@@ -86,20 +85,6 @@ const interviewFeedbacks = [
     },
 ];
 
-function getSavedJobIds() {
-    try {
-        const rawValue = window.localStorage.getItem(SAVED_JOBS_STORAGE_KEY);
-
-        if (!rawValue) {
-            return jobPostings.filter((job) => job.saved).map((job) => job.id);
-        }
-
-        return JSON.parse(rawValue) as string[];
-    } catch {
-        return jobPostings.filter((job) => job.saved).map((job) => job.id);
-    }
-}
-
 function getSupportedMimeType(candidates: string[]) {
     return candidates.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || '';
 }
@@ -125,11 +110,64 @@ function stopRecorder(recorder: MediaRecorder | null, chunks: Blob[]) {
 }
 
 function InterviewPage() {
-    const [selectedFeedbackId, setSelectedFeedbackId] = useState(interviewFeedbacks[0].id);
+    const [history, setHistory] = useState<any[]>([]);
+    const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(null);
     const [jobPickerOpen, setJobPickerOpen] = useState(false);
-    const savedJobs = jobPostings.filter((job) => getSavedJobIds().includes(job.id));
-    const [selectedJob, setSelectedJob] = useState<JobPosting | null>(savedJobs[0] || null);
+    const [savedJobs, setSavedJobs] = useState<JobPosting[]>([]);
+    const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
     const [interviewType, setInterviewType] = useState('technical');
+    
+    const fetchHistory = async () => {
+        try {
+            const response = await fetch('/api/interview/list', {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (response.ok) {
+                const json = await response.json();
+                const data = json.data || [];
+                setHistory(data);
+                if (data.length > 0 && !selectedFeedbackId) {
+                    setSelectedFeedbackId(data[0].interviewId);
+                }
+            }
+        } catch (error) {
+            console.error('Fetch interview history error:', error);
+        }
+    };
+
+    useEffect(() => {
+        const fetchJobs = async () => {
+            try {
+                const response = await fetch('/api/job-postings', {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.data) {
+                        const mappedJobs = data.data.map((job: any) => ({
+                            id: job.jobId,
+                            company: job.companyName,
+                            title: job.jobTitle,
+                            location: '-',
+                            deadline: job.deadline ? String(job.deadline) : '상시채용',
+                            match: 0,
+                            tags: [],
+                            saved: false,
+                        }));
+                        setSavedJobs(mappedJobs);
+                        if (mappedJobs.length > 0) setSelectedJob(mappedJobs[0]);
+                    }
+                }
+            } catch (error) {
+                console.error('Fetch jobs error:', error);
+            }
+        };
+        fetchJobs();
+        fetchHistory();
+    }, []);
+
+    const [currentInterviewId, setCurrentInterviewId] = useState<string | null>(null);
+    const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
     const [expectedMinutes, setExpectedMinutes] = useState('20');
     const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
     const [recordingStatus, setRecordingStatus] = useState<'idle' | 'requesting' | 'recording' | 'submitting' | 'submitted' | 'error'>('idle');
@@ -139,10 +177,31 @@ function InterviewPage() {
     const videoRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const videoChunksRef = useRef<Blob[]>([]);
-    const selectedFeedback = interviewFeedbacks.find((feedback) => feedback.id === selectedFeedbackId) || interviewFeedbacks[0];
-    const recentSimulations = interviewFeedbacks.map((feedback, index) => ({
-        ...feedback,
-        fallbackSummary: interviews[index]?.summary,
+
+    // 선택된 피드백 데이터 매핑
+    const selectedRecord = history.find(h => h.interviewId === selectedFeedbackId);
+    const selectedFeedback = {
+        company: selectedRecord?.companyName || '회사 정보 없음',
+        role: selectedRecord?.jobTitle || '직무 정보 없음',
+        date: selectedRecord?.createdAt ? new Date(selectedRecord.createdAt).toLocaleDateString() : '-',
+        summary: selectedRecord?.overallFeedback || '아직 평가가 완료되지 않았거나 답변이 없습니다.',
+        goodTitle: '강점 분석',
+        goodPoints: selectedRecord?.qaList?.filter((qa: any) => (qa.score || 0) >= 70).map((qa: any) => qa.feedback).filter(Boolean).slice(0, 3) || ['충분한 답변 데이터가 없습니다.'],
+        badTitle: '보완점 분석',
+        badPoints: selectedRecord?.qaList?.filter((qa: any) => (qa.score || 0) < 70).map((qa: any) => qa.feedback).filter(Boolean).slice(0, 3) || ['보완할 점을 분석 중입니다.'],
+        nextPractice: '전체적인 답변의 구체성을 높이고, 실무 경험을 수치화하여 답변하는 연습을 추천합니다.',
+        repeatedPoints: [
+            { label: '기술 용어 사용', count: 2 },
+            { label: '답변 길이 적절성', count: 1 },
+        ],
+    };
+
+    const recentSimulations = history.map((record) => ({
+        id: record.interviewId,
+        title: `${record.companyName} - ${record.jobTitle}`,
+        date: new Date(record.createdAt).toLocaleDateString(),
+        summary: record.overallFeedback,
+        fallbackSummary: '상세 피드백을 확인하세요.'
     }));
 
     useEffect(() => {
@@ -177,16 +236,43 @@ function InterviewPage() {
 
         try {
             setRecordingStatus('requesting');
+            setRecordingMessage('면접 세션을 생성하는 중입니다...');
+
+            // 1. 백엔드에서 면접 세션 시작 및 첫 질문 받기
+            const startResponse = await fetch(`/api/interview/start/${selectedJob.id}?type=${interviewType}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                }
+            });
+
+            if (!startResponse.ok) {
+                throw new Error('Failed to start interview session');
+            }
+
+            const startData = await startResponse.json();
+            const interviewId = startData.data.interviewId;
+            const firstQuestion = startData.data.qaList[0].question;
+            
+            setCurrentInterviewId(interviewId);
+            setCurrentQuestion(firstQuestion);
+
             setRecordingMessage('카메라와 마이크 권한을 요청하는 중입니다.');
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
                 video: true,
             });
+
+            // 오디오와 비디오 트랙을 분리하여 각각의 레코더에 할당 (NotSupportedError 방지)
+            const audioStream = new MediaStream(stream.getAudioTracks());
+            const videoStream = new MediaStream(stream.getVideoTracks());
+
             const audioMimeType = getSupportedMimeType(['audio/webm;codecs=opus', 'audio/webm']);
             const videoMimeType = getSupportedMimeType(['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']);
-            const audioRecorder = new MediaRecorder(stream, audioMimeType ? { mimeType: audioMimeType } : undefined);
-            const videoRecorder = new MediaRecorder(stream, videoMimeType ? { mimeType: videoMimeType } : undefined);
+
+            const audioRecorder = new MediaRecorder(audioStream, audioMimeType ? { mimeType: audioMimeType } : undefined);
+            const videoRecorder = new MediaRecorder(videoStream, videoMimeType ? { mimeType: videoMimeType } : undefined);
 
             audioChunksRef.current = [];
             videoChunksRef.current = [];
@@ -208,14 +294,24 @@ function InterviewPage() {
             videoRecorder.start();
             setRecordingStatus('recording');
             setRecordingMessage('면접 답변을 녹음/녹화하고 있습니다.');
-        } catch {
+        } catch (error: any) {
+            console.error('Interview start process failed:', error);
             setRecordingStatus('error');
-            setRecordingMessage('카메라 또는 마이크 권한을 확인해주세요.');
+            
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                setRecordingMessage('카메라 또는 마이크 권한이 거부되었습니다. 브라우저 주소창 옆의 자물쇠 아이콘을 클릭해 권한을 허용해주세요.');
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                setRecordingMessage('연결된 마이크 또는 카메라를 찾을 수 없습니다. 장치 연결 상태를 확인해주세요.');
+            } else if (error.message === 'Failed to start interview session') {
+                setRecordingMessage('백엔드 면접 세션 생성에 실패했습니다. 서버 로그를 확인해주세요.');
+            } else {
+                setRecordingMessage(`오류 발생: ${error.name || 'UnknownError'}. 상세 내용은 콘솔 로그를 확인해주세요.`);
+            }
         }
     };
 
     const finishInterviewRecording = async () => {
-        if (!selectedJob) {
+        if (!selectedJob || !currentInterviewId) {
             return;
         }
 
@@ -231,17 +327,28 @@ function InterviewPage() {
 
             formData.append('audioFile', new File([audioBlob], 'interview-answer-audio.webm', { type: audioBlob.type || 'audio/webm' }));
             formData.append('videoFile', new File([videoBlob], 'interview-answer-video.webm', { type: videoBlob.type || 'video/webm' }));
-            formData.append('jobId', selectedJob.id);
-            formData.append('interviewType', interviewType);
-            formData.append('expectedMinutes', expectedMinutes);
-
-            const response = await fetch(INTERVIEW_ANSWER_ENDPOINT, {
+            
+            const response = await fetch(`${INTERVIEW_ANSWER_ENDPOINT}/${currentInterviewId}`, {
                 method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
                 body: formData,
             });
 
             if (!response.ok) {
                 throw new Error('Interview answer upload failed.');
+            }
+
+            const resultData = await response.json();
+            const nextInterviewData = resultData.data;
+            
+            // 다음 질문 설정 (qaList의 마지막 항목이 보통 다음 질문임)
+            const nextQa = nextInterviewData.qaList[nextInterviewData.qaList.length - 1];
+            if (nextQa && !nextQa.answer) {
+                setCurrentQuestion(nextQa.question);
+            } else {
+                setCurrentQuestion("면접이 종료되었습니다. 피드백을 확인하세요.");
             }
 
             mediaStream?.getTracks().forEach((track) => track.stop());
@@ -270,8 +377,15 @@ function InterviewPage() {
             <div className="interview-grid">
                 <section className="interview-setup-card">
                     <div className="section-heading compact">
-                        <h2>시뮬레이션 설정</h2>
+                        <h2>{currentQuestion ? 'AI 면접관의 질문' : '시뮬레이션 설정'}</h2>
                     </div>
+                    {currentQuestion && (
+                        <div className="interview-question-bubble">
+                            <p style={{ padding: '1rem', backgroundColor: '#f0f4ff', borderRadius: '8px', marginBottom: '1rem', fontWeight: 'bold' }}>
+                                {currentQuestion}
+                            </p>
+                        </div>
+                    )}
                     <div className="interview-selected-job">
                         <span>선택한 공고</span>
                         {selectedJob ? (
@@ -293,7 +407,7 @@ function InterviewPage() {
                             <select value={interviewType} onChange={(event) => setInterviewType(event.target.value)}>
                                 <option value="technical">기술</option>
                                 <option value="personality">인성</option>
-                                <option value="role">직무</option>
+                                <option value="pt">직무</option>
                             </select>
                         </label>
                         <label>

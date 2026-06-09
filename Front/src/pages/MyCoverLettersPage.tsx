@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import type { ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getStoredCoverLetters } from '../state/coverLetters';
 import {
@@ -25,8 +26,54 @@ function formatCoverLetterUpdatedAt(item: { updatedAtIso?: string; updatedAtDays
 function MyCoverLettersPage() {
     const [open, setOpen] = useState(false);
     const [sort, setSort] = useState<CoverLetterSort>('recent');
-    const [coverLetterItems] = useState(() => getStoredCoverLetters());
+    const [coverLetterItems, setCoverLetterItems] = useState<CoverLetterDocument[]>([]);
     const navigate = useNavigate();
+
+    useEffect(() => {
+        const fetchResumes = async () => {
+            try {
+                const response = await fetch('/api/resume/list', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    }
+                });
+                if (response.ok) {
+                    const json = await response.json();
+                    const mapped: CoverLetterDocument[] = (json.data || []).map((r: any) => ({
+                        id: r.jobId,
+                        title: `${r.companyName} - ${r.jobTitle}`,
+                        company: r.companyName,
+                        role: r.jobTitle,
+                        updatedAt: '최근 수정됨',
+                        updatedAtIso: r.createdAt,
+                        updatedAtDaysAgo: 0,
+                        deadlineDaysLeft: 0,
+                        status: '완료',
+                        progress: 100,
+                        content: r.generatedText,
+                        originalContent: '',
+                        feedback: [],
+                        questions: []
+                    }));
+                    setCoverLetterItems(mapped);
+                }
+            } catch (error) {
+                console.error('Fetch resumes error:', error);
+            }
+        };
+        fetchResumes();
+    }, []);
+
+    const [templateFile, setTemplateFile] = useState<File | null>(null);
+    const [draftFile, setDraftFile] = useState<File | null>(null);
+
+    const handleTemplateChange = (e: ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) setTemplateFile(e.target.files[0]);
+    };
+
+    const handleDraftChange = (e: ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) setDraftFile(e.target.files[0]);
+    };
 
     const sortedCoverLetters = useMemo(
         () =>
@@ -99,22 +146,32 @@ function MyCoverLettersPage() {
                         <div className="form-grid">
                             <div className="form-field">
                                 <span className="form-field-label">회사 자소서 양식</span>
-                                <div className="upload-dropzone">
-                                    <span className="upload-dropzone-message">자소서 양식 파일을 드래그해서 첨부하세요.</span>
+                                <div className="upload-dropzone" onClick={() => document.getElementById('template-upload')?.click()} style={{ cursor: 'pointer' }}>
+                                    <input type="file" id="template-upload" hidden onChange={handleTemplateChange} accept=".pdf,.doc,.docx" />
+                                    <span className="upload-dropzone-message">
+                                        {templateFile ? `✅ ${templateFile.name}` : '자소서 양식 파일을 드래그해서 첨부하거나 클릭하세요.'}
+                                    </span>
                                     <button type="button" className="secondary-action-button">양식 파일 첨부</button>
                                 </div>
                             </div>
                             <div className="form-field">
                                 <span className="form-field-label">기존 작성 자소서</span>
-                                <div className="upload-dropzone">
-                                    <span className="upload-dropzone-message">기존 자소서 파일을 드래그해서 첨부하세요.</span>
+                                <div className="upload-dropzone" onClick={() => document.getElementById('draft-upload')?.click()} style={{ cursor: 'pointer' }}>
+                                    <input type="file" id="draft-upload" hidden onChange={handleDraftChange} accept=".pdf,.doc,.docx" />
+                                    <span className="upload-dropzone-message">
+                                        {draftFile ? `✅ ${draftFile.name}` : '기존 자소서 파일을 드래그해서 첨부하거나 클릭하세요.'}
+                                    </span>
                                     <button type="button" className="secondary-action-button">작성본 첨부</button>
                                 </div>
                             </div>
                         </div>
 
                         <div className="modal-actions">
-                            <button type="button" className="secondary-action-button" onClick={() => setOpen(false)}>취소</button>
+                            <button type="button" className="secondary-action-button" onClick={() => {
+                                setOpen(false);
+                                setTemplateFile(null);
+                                setDraftFile(null);
+                            }}>취소</button>
                             <button type="button" className="primary-action-button" onClick={createDraft}>생성하기</button>
                         </div>
                     </section>

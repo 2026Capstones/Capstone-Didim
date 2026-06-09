@@ -19,6 +19,7 @@ public class LmsMockService {
         private List<Map<String, Object>> scholarships;
         private List<Map<String, Object>> volunteer;
         private List<Map<String, Object>> certifications;
+        private List<Map<String, Object>> projects;
     }
 
     public LmsData getMockLmsData(String email) {
@@ -42,6 +43,7 @@ public class LmsMockService {
                         Map.of("name", "SQLD", "date", "2023-11"),
                         Map.of("name", "TOEIC (850)", "date", "2024-02")
                 ))
+                .projects(List.of()) // LMS 연동 시 프로젝트는 빈 값으로 처리하여 기존 데이터 보호
                 .build();
     }
 }

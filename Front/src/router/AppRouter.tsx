@@ -6,6 +6,7 @@ import PortfolioPage from '../pages/PortfolioPage';
 import CoverLetterPage from '../pages/CoverLetterPage';
 import InterviewPage from '../pages/InterviewPage';
 import JobPostingsPage from '../pages/JobPostingsPage';
+import AdminPage from '../pages/AdminPage';
 import MyPage from '../pages/MyPage';
 import MyCoverLettersPage from '../pages/MyCoverLettersPage';
 import AppLayout from '../components/layout/AppLayout';
@@ -40,6 +41,7 @@ function AppRouter() {
                     <Route path="/cover-letters/:id" element={<CoverLetterPage />} />
                     <Route path="/interview" element={<InterviewPage />} />
                     <Route path="/job-postings" element={<JobPostingsPage />} />
+                    <Route path="/admin" element={<AdminPage />} />
                     <Route path="/my-page" element={<MyPage />} />
                     <Route path="/my-cover-letters" element={<Navigate to="/cover-letters" replace />} />
                     <Route path="/cover-letter" element={<Navigate to="/cover-letters" replace />} />

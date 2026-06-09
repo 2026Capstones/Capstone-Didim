@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useParams, useLocation } from 'react-router-dom';
 import { coverLetters } from '../mocks/career';
 import { getStoredCoverLetterById, updateStoredCoverLetterContent, updateStoredCoverLetterTitle } from '../state/coverLetters';
 import './CoverLetters.css';
@@ -71,34 +71,117 @@ async function downloadTextFile(fileName: string, content: string) {
 function CoverLetterPage() {
     const [reviewModalOpen, setReviewModalOpen] = useState(false);
     const { id } = useParams();
-    const document = (id && getStoredCoverLetterById(id)) || coverLetters[0];
+    const location = useLocation();
+    const queryParams = new URLSearchParams(location.search);
+    const jobIdFromQuery = queryParams.get('jobId');
+
+    // 실제 백엔드에서 받아올 데이터 상태
+    const [document, setDocument] = useState<Partial<CoverLetterDocument>>({
+        company: '불러오는 중...',
+        role: '',
+        feedback: [],
+    });
+
     const isNewDraft = id === 'new-draft';
-    const editableDraft = buildEditableDraft(document.questions, document.content, isNewDraft);
-    const [coverLetterTitle, setCoverLetterTitle] = useState(isNewDraft ? '새 자소서 초안' : document.title);
-    const [draftContent, setDraftContent] = useState(editableDraft);
+    const [coverLetterTitle, setCoverLetterTitle] = useState(isNewDraft ? '새 자소서 초안' : '');
+    const [draftContent, setDraftContent] = useState(isNewDraft ? 'AI가 자소서를 작성하고 있습니다...' : '자소서를 불러오는 중입니다...');
     const [saveStatus, setSaveStatus] = useState('');
+
+    // 기존 자소서 조회 또는 새 자소서 생성
+    useEffect(() => {
+        const fetchResume = async (jobId: string) => {
+            try {
+                const response = await fetch(`/api/resume/${jobId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    }
+                });
+                if (response.ok) {
+                    const json = await response.json();
+                    const data = json.data;
+                    setDocument({
+                        company: data.companyName,
+                        role: data.jobTitle,
+                        feedback: [], // 백엔드에서 피드백을 주지 않는다면 빈 배열
+                    });
+                    setCoverLetterTitle(`${data.companyName} - ${data.jobTitle}`);
+                    setDraftContent(data.generatedText);
+                } else if (isNewDraft) {
+                    // 새 초안 생성 시도
+                    generateResume(jobId);
+                }
+            } catch (error) {
+                console.error('Fetch resume error:', error);
+            }
+        };
+
+        const generateResume = async (jobId: string) => {
+            try {
+                const response = await fetch(`/api/resume/generate/${jobId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    }
+                });
+                if (response.ok) {
+                    const json = await response.json();
+                    const data = json.data;
+                    setDocument({
+                        company: data.companyName,
+                        role: data.jobTitle,
+                        feedback: [],
+                    });
+                    setCoverLetterTitle(`${data.companyName} - ${data.jobTitle}`);
+                    setDraftContent(data.generatedText);
+                } else {
+                    setDraftContent('자소서 생성에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('Generate resume error:', error);
+                setDraftContent('서버 연결 중 오류가 발생했습니다.');
+            }
+        };
+
+        if (isNewDraft && jobIdFromQuery) {
+            generateResume(jobIdFromQuery);
+        } else if (id && id !== 'new-draft') {
+            fetchResume(id);
+        }
+    }, [id, isNewDraft, jobIdFromQuery]);
+
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const trimmedTitle = coverLetterTitle.trim();
-    const displayTitle = trimmedTitle || (isNewDraft ? '새 자소서 초안' : document.title);
+    const displayTitle = trimmedTitle || (isNewDraft ? '새 자소서 초안' : document.title || '제목 없음');
 
     const finishTitleEdit = () => {
         setCoverLetterTitle(displayTitle);
-        if (!isNewDraft && id) {
-            updateStoredCoverLetterTitle(id, displayTitle);
-        }
         setIsEditingTitle(false);
     };
 
-    const handleSave = () => {
-        if (id) {
-            updateStoredCoverLetterContent(id, draftContent, {
-                ...document,
-                title: displayTitle,
-            });
-            updateStoredCoverLetterTitle(id, displayTitle);
-        }
+    const handleSave = async () => {
+        const targetJobId = isNewDraft ? jobIdFromQuery : id;
+        if (!targetJobId) return;
 
-        setSaveStatus('저장되었습니다.');
+        try {
+            setSaveStatus('저장 중...');
+            const response = await fetch(`/api/resume/${targetJobId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({ generatedText: draftContent }),
+            });
+
+            if (response.ok) {
+                setSaveStatus('저장되었습니다.');
+            } else {
+                setSaveStatus('저장에 실패했습니다.');
+            }
+        } catch (error) {
+            console.error('Save resume error:', error);
+            setSaveStatus('서버 연결 오류');
+        }
     };
 
     const handleDownload = async () => {

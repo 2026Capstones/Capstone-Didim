@@ -12,7 +12,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiResponse<Void>> handleRuntimeException(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(e.getMessage()));
+                .body(ApiResponse.error("[" + e.getClass().getSimpleName() + "] " + e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

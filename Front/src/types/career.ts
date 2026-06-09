@@ -91,4 +91,6 @@ export interface JobPosting {
     tags: string[];
     saved?: boolean;
     applied?: boolean;
+    description?: string;
+    requirements?: string;
 }

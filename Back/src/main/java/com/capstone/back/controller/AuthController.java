@@ -1,6 +1,7 @@
 package com.capstone.back.controller;
 
 import com.capstone.back.domain.User;
+import com.capstone.back.dto.ApiResponse;
 import com.capstone.back.dto.LoginRequest;
 import com.capstone.back.dto.LoginResponse;
 import com.capstone.back.repository.UserRepository;
@@ -23,7 +24,7 @@ public class AuthController {
     private final JwtTokenProvider jwtTokenProvider;
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("Invalid email or password"));
 
@@ -32,6 +33,6 @@ public class AuthController {
         }
 
         String token = jwtTokenProvider.createToken(user.getEmail(), user.getRole().name());
-        return ResponseEntity.ok(new LoginResponse(token));
+        return ResponseEntity.ok(ApiResponse.success(new LoginResponse(token)));
     }
 }

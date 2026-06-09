@@ -45,6 +45,7 @@ public class Interview {
     @Column(name = "overall_feedback", columnDefinition = "TEXT")
     private String overallFeedback;
 
+    @Builder.Default
     @OneToMany(mappedBy = "interview", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.List<InterviewQa> qaList = new java.util.ArrayList<>();
 

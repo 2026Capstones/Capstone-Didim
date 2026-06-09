@@ -40,6 +40,12 @@ public class InterviewQa {
     @Column(name = "order_num", nullable = false)
     private Integer orderNum;
 
+    public void evaluate(String answer, String feedback, Integer score) {
+        this.answer = answer;
+        this.feedback = feedback;
+        this.score = score;
+    }
+
     public enum QuestionType {
         common, ai
     }

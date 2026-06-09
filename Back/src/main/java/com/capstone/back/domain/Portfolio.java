@@ -44,12 +44,31 @@ public class Portfolio {
     @Column(columnDefinition = "TEXT")
     private Object certifications;
 
+    @Convert(converter = JsonConverter.class)
+    @Column(columnDefinition = "TEXT")
+    private Object projects;
+
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
     @Convert(converter = JsonConverter.class)
     @Column(name = "additional_pdf_urls", columnDefinition = "TEXT")
     private Object additionalPdfUrls;
+
+    public void updateData(java.math.BigDecimal gpa, Object awards, Object scholarships, Object volunteer, Object certifications, Object projects) {
+        this.gpa = gpa;
+        this.awards = awards;
+        this.scholarships = scholarships;
+        this.volunteer = volunteer;
+        this.certifications = certifications;
+        this.projects = projects;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void updateAdditionalPdfs(Object additionalPdfUrls) {
+        this.additionalPdfUrls = additionalPdfUrls;
+        this.updatedAt = LocalDateTime.now();
+    }
 
     @PrePersist
     @PreUpdate

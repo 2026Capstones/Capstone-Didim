@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -87,6 +88,87 @@ public class InterviewService {
         return InterviewResponse.from(savedInterview);
     }
 
+    /**
+     * 답변 제출 및 다음 질문 받기 (FastAPI 연동)
+     */
+    @Transactional
+    public InterviewResponse submitAnswer(User user, String interviewId, 
+                                         org.springframework.web.multipart.MultipartFile audioFile, 
+                                         org.springframework.web.multipart.MultipartFile videoFile) {
+        Interview interview = interviewRepository.findById(interviewId)
+                .orElseThrow(() -> new RuntimeException("면접 세션을 찾을 수 없습니다."));
+
+        if (!interview.getUser().getUserId().equals(user.getUserId())) {
+            throw new RuntimeException("본인의 면접만 진행할 수 있습니다.");
+        }
+
+        InterviewQa currentQa = interview.getQaList().stream()
+                .filter(q -> q.getAnswer() == null)
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("답변할 질문이 없습니다."));
+
+        Portfolio portfolio = portfolioRepository.findByUser(user).orElse(null);
+        Resume resume = resumeRepository.findByUserAndJobPosting(user, interview.getJobPosting()).orElse(null);
+        Company company = companyRepository.findByCompanyName(interview.getJobPosting().getCompanyName()).orElse(null);
+
+        // 1. AI 서버용 컨텍스트 데이터 구성
+        Map<String, String> contextMap = new HashMap<>();
+        contextMap.put("interview_type", interview.getInterviewType().name());
+        contextMap.put("current_question", currentQa.getQuestion());
+        contextMap.put("student_portfolio", formatPortfolio(portfolio) + "\n" + (resume != null ? resume.getGeneratedText() : ""));
+        contextMap.put("company_info", (company != null ? (company.getTalentType() + " / " + company.getCulture()) : "일반 기업"));
+
+        String contextData;
+        try {
+            contextData = objectMapper.writeValueAsString(contextMap);
+        } catch (Exception e) {
+            throw new RuntimeException("컨텍스트 데이터 생성 실패");
+        }
+
+        // 2. AI 서버 분석 요청
+        Map<String, Object> aiResult = aiService.analyzeInterview(videoFile, audioFile, contextData);
+        
+        try {
+            String studentAnswer = (String) aiResult.get("student_answer");
+            Map<String, Object> llmFeedback = (Map<String, Object>) aiResult.get("llm_feedback");
+            
+            String feedback = (String) llmFeedback.get("feedback");
+            int score = (llmFeedback.get("score") instanceof Number) ? ((Number) llmFeedback.get("score")).intValue() : 0;
+            String nextQuestion = (String) llmFeedback.get("next_question");
+
+            // 현재 QA 업데이트 (JPA Dirty Checking 활용)
+            currentQa.evaluate(studentAnswer, feedback, score);
+            interviewQaRepository.save(currentQa);
+
+            // 다음 질문 생성 (마지막 질문이 아닌 경우)
+            if (nextQuestion != null && !nextQuestion.isBlank() && interview.getQaList().size() < 5) {
+                InterviewQa nextQa = InterviewQa.builder()
+                        .interview(interview)
+                        .questionType(InterviewQa.QuestionType.ai)
+                        .question(nextQuestion)
+                        .orderNum(currentQa.getOrderNum() + 1)
+                        .build();
+                interviewQaRepository.save(nextQa);
+                interview.getQaList().add(nextQa);
+            } else {
+                // 면접 종료 처리
+                double avg = interview.getQaList().stream()
+                        .filter(q -> q.getScore() != null)
+                        .mapToInt(InterviewQa::getScore)
+                        .average().orElse(0);
+                interview.completeInterview((int)avg, "전체 면접이 종료되었습니다. 각 문항의 피드백을 확인해주세요.");
+            }
+
+            return InterviewResponse.from(interviewRepository.save(interview));
+        } catch (Exception e) {
+            log.error("AI 분석 결과 처리 중 오류: {}", e.getMessage());
+            throw new RuntimeException("AI 결과 처리 실패: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 답변 제출 및 다음 질문 받기 (기존 텍스트 방식 - 하위 호환성 유지 필요 시)
+     */
     @Transactional
     public InterviewResponse submitAnswer(User user, String interviewId, String answer) {
         Interview interview = interviewRepository.findById(interviewId)

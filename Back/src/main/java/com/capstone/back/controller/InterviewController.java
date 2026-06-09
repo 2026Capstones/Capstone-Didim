@@ -57,16 +57,17 @@ public class InterviewController {
     }
 
     @Operation(summary = "답변 제출 및 다음 질문 받기", description = "사용자의 답변을 제출하면 AI가 평가하고 다음 질문을 생성합니다.")
-    @PostMapping("/answer/{interviewId}")
+    @PostMapping(value = "/answer/{interviewId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<InterviewResponse>> submitAnswer(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String interviewId,
-            @RequestParam String answer) {
+            @RequestParam("audioFile") MultipartFile audioFile,
+            @RequestParam("videoFile") MultipartFile videoFile) {
         
         User user = userRepository.findByEmail(userDetails.getUsername())
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
         
-        InterviewResponse response = interviewService.submitAnswer(user, interviewId, answer);
+        InterviewResponse response = interviewService.submitAnswer(user, interviewId, audioFile, videoFile);
         return ResponseEntity.ok(ApiResponse.success("답변 처리 완료", response));
     }
 

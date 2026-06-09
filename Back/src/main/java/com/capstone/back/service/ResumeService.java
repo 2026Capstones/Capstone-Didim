@@ -37,7 +37,7 @@ public class ResumeService {
                 .orElseThrow(() -> new RuntimeException("채용 공고 정보가 없습니다."));
         
         MatchResult matchResult = matchResultRepository.findByUserAndJobPosting(user, jobPosting)
-                .orElseThrow(() -> new RuntimeException("먼저 매칭 점수 계산을 진행해야 합니다."));
+                .orElse(null);
 
         Company company = companyRepository.findByCompanyName(jobPosting.getCompanyName())
                 .orElse(null);
@@ -45,7 +45,7 @@ public class ResumeService {
         // 2. AI 프롬프트 구성
         String studentData = formatPortfolioData(portfolio);
         String jobInfo = formatJobAndCompanyData(jobPosting, company);
-        String matchReason = matchResult.getReason();
+        String matchReason = (matchResult != null) ? matchResult.getReason() : "매칭 분석 결과가 없습니다. 학생의 역량과 공고의 요건을 바탕으로 최선을 다해 작성해주세요.";
 
         String systemPrompt = """
                 당신은 취업 성공률 100%를 자랑하는 전문 자소서 작가입니다.

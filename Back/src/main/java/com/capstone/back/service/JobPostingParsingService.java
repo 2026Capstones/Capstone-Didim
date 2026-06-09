@@ -41,29 +41,30 @@ public class JobPostingParsingService {
      */
     public List<ExtractedJobPosting> parseTextToJobPostingList(String text) {
         String systemPrompt = """
-                너는 HR 전문가야. 제공된 채용 공고 텍스트에서 모든 채용 정보를 찾아 JSON 리스트 형식으로만 응답해줘.
+                너는 HR 전문가야. 제공된 채용 공고 텍스트에서 모든 채용 정보를 찾아 반드시 유효한 JSON 리스트 형식으로만 응답해줘.
                 특히, 텍스트 내용 중에 채용 홈페이지 주소나 관련 URL이 있다면 반드시 'jobUrl' 필드에 넣어줘.
                 
-                형식은 반드시 아래와 같이 JSON 배열([]) 형태여야 해:
+                형식은 반드시 아래와 같이 대괄호로 시작하는 JSON 배열([]) 형태여야 해:
                 [
                   {
                     "companyName": "회사 이름",
                     "jobTitle": "채용 직무 이름",
-                    "deadline": "YYYY-MM-DD", (찾을 수 없으면 "상시채용" 또는 null)
+                    "deadline": "YYYY-MM-DD",
                     "salary": "연봉 정보",
                     "requirements": "자격 요건 요약",
                     "description": "담당 업무 요약",
-                    "jobUrl": "채용 홈페이지 URL 또는 관련 링크 (찾을 수 없으면 null)"
+                    "jobUrl": "채용 홈페이지 URL 또는 관련 링크"
                   }
                 ]
-                설명이나 다른 말은 일절 하지 말고 오직 JSON 배열만 출력해.
+                찾을 수 없는 필드는 문자열 null 을 쓰지 말고 실제 null 값을 줘.
+                JSON의 모든 키(key)와 문자열 값은 반드시 쌍따옴표(")를 사용해야 해.
+                앞뒤에 어떤 설명이나 마크다운 백틱(```json)도 절대 붙이지 말고 순수한 JSON 문자열만 출력해.
                 """;
 
         String aiResponse = aiService.analyzeContent(text, systemPrompt);
-        String jsonOnly = extractJson(aiResponse);
+        String jsonOnly = extractJsonArray(aiResponse);
 
         try {
-            // JSON이 배열인지 단일 객체인지 판단하여 리스트로 변환
             if (jsonOnly.trim().startsWith("[")) {
                 return objectMapper.readValue(jsonOnly, new TypeReference<List<ExtractedJobPosting>>() {});
             } else {
@@ -72,17 +73,42 @@ public class JobPostingParsingService {
             }
         } catch (JsonProcessingException e) {
             log.error("채용 공고 AI 응답 JSON 파싱 실패: {}", e.getMessage());
+            log.error("정제된 JSON 시도본: {}", jsonOnly);
             log.error("원본 응답: {}", aiResponse);
             throw new RuntimeException("채용 공고 AI 응답을 처리하는 중 오류가 발생했습니다.");
         }
     }
 
-    private String extractJson(String response) {
-        if (response.contains("```json")) {
-            return response.substring(response.indexOf("```json") + 7, response.lastIndexOf("```")).trim();
-        } else if (response.contains("```")) {
-            return response.substring(response.indexOf("```") + 3, response.lastIndexOf("```")).trim();
+    private String extractJsonArray(String response) {
+        if (response == null) return "[]";
+        
+        String cleaned = response;
+        if (cleaned.contains("```json")) {
+            cleaned = cleaned.substring(cleaned.indexOf("```json") + 7);
+            if (cleaned.contains("```")) {
+                cleaned = cleaned.substring(0, cleaned.indexOf("```"));
+            }
+        } else if (cleaned.contains("```")) {
+            cleaned = cleaned.substring(cleaned.indexOf("```") + 3);
+            if (cleaned.contains("```")) {
+                cleaned = cleaned.substring(0, cleaned.indexOf("```"));
+            }
         }
-        return response.trim();
+        
+        int startIndex = cleaned.indexOf('[');
+        int endIndex = cleaned.lastIndexOf(']');
+        
+        if (startIndex >= 0 && endIndex >= startIndex) {
+            return cleaned.substring(startIndex, endIndex + 1).trim();
+        }
+        
+        // 배열을 못 찾았을 경우 단일 객체라도 시도
+        startIndex = cleaned.indexOf('{');
+        endIndex = cleaned.lastIndexOf('}');
+        if (startIndex >= 0 && endIndex >= startIndex) {
+            return cleaned.substring(startIndex, endIndex + 1).trim();
+        }
+        
+        return cleaned.trim();
     }
 }

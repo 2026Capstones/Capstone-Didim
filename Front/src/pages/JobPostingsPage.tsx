@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { jobPostings } from '../mocks/career';
 import type { JobPosting } from '../types/career';
@@ -17,15 +17,6 @@ const jobTabs: Array<{ id: JobTab; label: string }> = [
     { id: 'recent', label: '최근 본 공고' },
 ];
 
-const matchingLabels = [
-    '직무 적합도',
-    '경력/경험 일치도',
-    '자격증 충족도',
-    '학력 충족도',
-    '포트폴리오/프로젝트 적합도',
-    '우대사항 충족도',
-];
-
 function parseDeadline(deadline: string) {
     return getDaysFromDdayText(deadline) || 999;
 }
@@ -35,24 +26,13 @@ function getStoredSavedJobIds() {
         const rawValue = window.localStorage.getItem(SAVED_JOBS_STORAGE_KEY);
 
         if (!rawValue) {
-            return jobPostings.filter((job) => job.saved).map((job) => job.id);
+            return []; // 더미 데이터 삭제로 인해 빈 배열 반환
         }
 
         return JSON.parse(rawValue) as string[];
     } catch {
-        return jobPostings.filter((job) => job.saved).map((job) => job.id);
+        return [];
     }
-}
-
-function getJobMatchingScores(job: JobPosting) {
-    return matchingLabels.map((label, index) => ({
-        label,
-        score: Math.max(45, Math.min(98, job.match - index * 4 + (index % 2 === 0 ? 3 : -2))),
-    }));
-}
-
-function getJobDetailDescription(job: JobPosting) {
-    return `${job.company}의 ${job.title} 포지션은 ${job.tags.join(', ')} 역량을 중심으로 지원자의 직무 이해도와 프로젝트 경험을 확인합니다. 포트폴리오의 기술 스택, 활동 이력, 자격 요건을 기준으로 매칭률을 산정하며, 실제 공고 원문 연동 후에는 상세 자격 요건과 우대사항이 이 영역에 표시됩니다.`;
 }
 
 function JobPostingsPage() {
@@ -63,16 +43,88 @@ function JobPostingsPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [savedJobIds, setSavedJobIds] = useState(() => new Set(getStoredSavedJobIds()));
     const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
-    const recommendedIds = useMemo(() => new Set(jobPostings.slice(0, 2).map((job) => job.id)), []);
+    const [jobItems, setJobItems] = useState<JobPosting[]>([]);
+    
+    // 로딩 및 매칭 결과 상태
+    const [isLoading, setIsLoading] = useState(true);
+    const [matchDetails, setMatchDetails] = useState<any>(null);
+    const [isMatching, setIsMatching] = useState(false);
+
+    useEffect(() => {
+        if (!selectedJob) {
+            setMatchDetails(null);
+            return;
+        }
+
+        const fetchMatchScore = async () => {
+            setIsMatching(true);
+            try {
+                const response = await fetch(`/api/match/calculate/${selectedJob.id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    setMatchDetails(data.data);
+                }
+            } catch (error) {
+                console.error('Match error:', error);
+            } finally {
+                setIsMatching(false);
+            }
+        };
+
+        fetchMatchScore();
+    }, [selectedJob]);
+
+    useEffect(() => {
+        const fetchJobs = async () => {
+            setIsLoading(true);
+            try {
+                const response = await fetch('/api/job-postings', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.data) {
+                        const mappedJobs = data.data.map((job: any) => ({
+                            id: job.jobId,
+                            company: job.companyName,
+                            title: job.jobTitle,
+                            location: '-',
+                            deadline: job.deadline ? String(job.deadline) : '상시채용',
+                            match: 0, // 매칭 점수는 모달에서 별도 계산
+                            tags: [],
+                            saved: false,
+                            description: job.description,
+                            requirements: job.requirements
+                        }));
+                        setJobItems(mappedJobs);
+                    }
+                }
+            } catch (error) {
+                console.error('Fetch jobs error:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchJobs();
+    }, []);
+
+    const recommendedIds = useMemo(() => new Set(jobItems.slice(0, 2).map((job) => job.id)), [jobItems]);
     const recentViewedIds = useMemo(() => new Set(RECENT_VIEWED_JOB_IDS), []);
     const baseFilteredJobs = useMemo(() => {
         const normalizedKeyword = keyword.trim().toLowerCase();
 
-        return jobPostings.filter((job) => {
+        return jobItems.filter((job) => {
             const matchesKeyword = !normalizedKeyword
                 || job.company.toLowerCase().includes(normalizedKeyword)
                 || job.title.toLowerCase().includes(normalizedKeyword)
-                || job.tags.some((tag) => tag.toLowerCase().includes(normalizedKeyword));
+                || (job.tags && job.tags.some((tag) => tag.toLowerCase().includes(normalizedKeyword)));
             const matchesRegion = region === 'all'
                 || ['서울', '경기', '판교', '분당', '수원', '성남'].some((area) => job.location.includes(area));
 
@@ -198,12 +250,18 @@ function JobPostingsPage() {
                                     setCurrentPage(1);
                                 }}
                             >
-                                {tab.label}({tabCounts[tab.id]})
+                                {tab.label}({isLoading ? 0 : tabCounts[tab.id]})
                             </button>
                         ))}
                     </div>
 
-                    {pagedJobs.length > 0 ? (
+                    {isLoading ? (
+                        <div className="job-empty-state" style={{ padding: '4rem 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                            <div className="loading-spinner" style={{ width: '32px', height: '32px', border: '3px solid #f3f3f3', borderTop: '3px solid var(--primary-color)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <p style={{ color: 'var(--text-secondary)' }}>서버에서 채용 공고를 불러오는 중입니다...</p>
+                            <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                        </div>
+                    ) : pagedJobs.length > 0 ? (
                         pagedJobs.map((job) => {
                             const isRecommended = recommendedIds.has(job.id);
 
@@ -276,44 +334,39 @@ function JobPostingsPage() {
                             <div className="job-match-panel">
                                 <div className="job-match-panel-title">
                                     <span>포트폴리오 매칭률</span>
-                                    <strong>{selectedJob.match}%</strong>
+                                    <strong>{isMatching ? '계산 중...' : matchDetails ? `${matchDetails.matchScore}%` : '-'}</strong>
                                 </div>
                                 <div className="job-match-grid">
-                                    {getJobMatchingScores(selectedJob).map((item) => (
-                                        <div className="job-match-item" key={item.label}>
-                                            <div>
-                                                <span>{item.label}</span>
-                                                <strong>{item.score}%</strong>
-                                            </div>
-                                            <div className="job-match-bar" aria-hidden="true">
-                                                <span style={{ width: `${item.score}%` }} />
-                                            </div>
+                                    <div className="job-match-item" style={{ width: '100%', flexDirection: 'column', alignItems: 'flex-start' }}>
+                                        <div style={{ marginBottom: '8px' }}>
+                                            <span>AI 매칭 분석 결과</span>
                                         </div>
-                                    ))}
+                                        <p style={{ fontSize: '14px', lineHeight: '1.5' }}>
+                                            {isMatching ? '이력서와 공고를 비교 분석하고 있습니다...' : matchDetails ? matchDetails.reason : '매칭 점수를 불러오지 못했습니다.'}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
                         <div className="job-detail-body">
                             <h3>공고 상세 정보</h3>
-                            <p>{getJobDetailDescription(selectedJob)}</p>
                             <div className="job-detail-section-grid">
                                 <article>
-                                    <strong>주요 업무</strong>
-                                    <p>서비스 요구사항을 분석하고 안정적인 기능 구현, 성능 개선, 협업 기반 개발을 수행합니다.</p>
+                                    <strong>주요 업무 및 설명</strong>
+                                    <p style={{ whiteSpace: 'pre-wrap' }}>{selectedJob.description || '정보 없음'}</p>
                                 </article>
                                 <article>
                                     <strong>자격 요건</strong>
-                                    <p>{selectedJob.tags.join(', ')} 관련 학습 또는 프로젝트 경험과 문제 해결 역량을 확인합니다.</p>
-                                </article>
-                                <article>
-                                    <strong>우대 사항</strong>
-                                    <p>실제 사용자 문제를 정의하고 포트폴리오 또는 팀 프로젝트로 개선한 경험을 우대합니다.</p>
+                                    <p style={{ whiteSpace: 'pre-wrap' }}>{selectedJob.requirements || '정보 없음'}</p>
                                 </article>
                             </div>
                         </div>
 
                         <div className="job-detail-footer">
+                            <Link to={`/cover-letters/new-draft?jobId=${selectedJob.id}`} className="primary-action-button" style={{ textDecoration: 'none', textAlign: 'center' }}>
+                                AI 자소서 생성
+                            </Link>
                             <button type="button" className="secondary-action-button" onClick={() => setSelectedJob(null)}>닫기</button>
                         </div>
                     </section>

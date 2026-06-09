@@ -28,7 +28,55 @@ public class AiService {
     @Value("${spring.ai.openai.chat.options.model:yc-gemma-4-26b-a4b}")
     private String model;
 
+    @Value("${ai.server.url:http://127.0.0.1:8000}")
+    private String aiServerUrl;
+
     private final RestTemplate restTemplate = new RestTemplate();
+
+    /**
+     * FastAPI AI 서버로 영상/음성 분석을 요청합니다.
+     */
+    public Map<String, Object> analyzeInterview(org.springframework.web.multipart.MultipartFile video, 
+                                               org.springframework.web.multipart.MultipartFile audio, 
+                                               String contextData) {
+        String url = aiServerUrl + "/analyze-and-feedback";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        org.springframework.util.MultiValueMap<String, Object> body = new org.springframework.util.LinkedMultiValueMap<>();
+        
+        // 비디오 파일 추가 (파일명 및 컨텐츠 타입 명시)
+        body.add("video_file", createFileEntity("video_file", video));
+        
+        // 오디오 파일 추가 (있는 경우)
+        if (audio != null && !audio.isEmpty()) {
+            body.add("audio_file", createFileEntity("audio_file", audio));
+        }
+        
+        body.add("context_data", contextData);
+
+        HttpEntity<org.springframework.util.MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+
+        try {
+            log.info("AI 분석 서버 요청 전송: {}", url);
+            return restTemplate.postForObject(url, requestEntity, Map.class);
+        } catch (Exception e) {
+            log.error("AI 분석 서버 통신 중 오류 발생: {}", e.getMessage());
+            throw new RuntimeException("AI 분석 서버 통신 실패: " + e.getMessage());
+        }
+    }
+
+    private HttpEntity<org.springframework.core.io.Resource> createFileEntity(String fieldName, org.springframework.web.multipart.MultipartFile file) {
+        HttpHeaders fileHeaders = new HttpHeaders();
+        fileHeaders.setContentDispositionFormData(fieldName, file.getOriginalFilename());
+        try {
+            fileHeaders.setContentType(MediaType.parseMediaType(file.getContentType()));
+        } catch (Exception e) {
+            fileHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        }
+        return new HttpEntity<>(file.getResource(), fileHeaders);
+    }
 
     /**
      * 추출된 텍스트를 LLM에 전달하여 분석 결과를 받습니다.

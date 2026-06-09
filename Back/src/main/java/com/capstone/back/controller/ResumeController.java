@@ -67,11 +67,12 @@ public class ResumeController {
     public ResponseEntity<ApiResponse<ResumeResponse>> updateResume(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String jobId,
-            @RequestBody String newText) {
+            @RequestBody java.util.Map<String, String> payload) {
         
         User user = userRepository.findByEmail(userDetails.getUsername())
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
         
+        String newText = payload.get("generatedText");
         ResumeResponse resume = resumeService.updateResume(user, jobId, newText);
         return ResponseEntity.ok(ApiResponse.success("자소서 수정 완료", resume));
     }
