@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
@@ -23,6 +24,7 @@ public class ResumeService {
     private final JobPostingRepository jobPostingRepository;
     private final CompanyRepository companyRepository;
     private final MatchResultRepository matchResultRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * 학생의 포트폴리오와 매칭 결과를 바탕으로 맞춤형 자기소개서를 생성합니다.
@@ -30,7 +32,7 @@ public class ResumeService {
     @Transactional
     public ResumeResponse generateResume(User user, String jobId) {
         // 1. 필수 데이터 조회
-        Portfolio portfolio = portfolioRepository.findByUser(user)
+        Portfolio portfolio = portfolioRepository.findFirstByUserOrderByUpdatedAtDesc(user)
                 .orElseThrow(() -> new RuntimeException("포트폴리오 정보가 없습니다."));
         
         JobPosting jobPosting = jobPostingRepository.findById(jobId)
@@ -75,7 +77,7 @@ public class ResumeService {
             String generatedText = aiService.analyzeContent(content, systemPrompt);
 
             // 3. 결과 저장 (기존 자소서가 있다면 업데이트, 없으면 생성)
-            Resume resume = resumeRepository.findByUserAndJobPosting(user, jobPosting)
+            Resume resume = resumeRepository.findFirstByUserAndJobPostingOrderByCreatedAtDesc(user, jobPosting)
                     .map(existing -> Resume.builder()
                             .resumeId(existing.getResumeId())
                             .user(user)
@@ -108,7 +110,7 @@ public class ResumeService {
     public ResumeResponse getResume(User user, String jobId) {
         JobPosting jobPosting = jobPostingRepository.findById(jobId)
                 .orElseThrow(() -> new RuntimeException("공고를 찾을 수 없습니다."));
-        Resume resume = resumeRepository.findByUserAndJobPosting(user, jobPosting)
+        Resume resume = resumeRepository.findFirstByUserAndJobPostingOrderByCreatedAtDesc(user, jobPosting)
                 .orElseThrow(() -> new RuntimeException("생성된 자소서가 없습니다."));
         return ResumeResponse.from(resume);
     }
@@ -117,8 +119,8 @@ public class ResumeService {
     public ResumeResponse updateResume(User user, String jobId, String newText) {
         JobPosting jobPosting = jobPostingRepository.findById(jobId)
                 .orElseThrow(() -> new RuntimeException("공고를 찾을 수 없습니다."));
-        
-        Resume resume = resumeRepository.findByUserAndJobPosting(user, jobPosting)
+
+        Resume resume = resumeRepository.findFirstByUserAndJobPostingOrderByCreatedAtDesc(user, jobPosting)
                 .orElseThrow(() -> new RuntimeException("수정할 자소서가 없습니다."));
 
         Resume updatedResume = Resume.builder()
@@ -136,7 +138,7 @@ public class ResumeService {
     public void deleteResume(User user, String jobId) {
         JobPosting jobPosting = jobPostingRepository.findById(jobId)
                 .orElseThrow(() -> new RuntimeException("공고를 찾을 수 없습니다."));
-        Resume resume = resumeRepository.findByUserAndJobPosting(user, jobPosting)
+        Resume resume = resumeRepository.findFirstByUserAndJobPostingOrderByCreatedAtDesc(user, jobPosting)
                 .orElseThrow(() -> new RuntimeException("삭제할 자소서가 없습니다."));
         resumeRepository.delete(resume);
     }

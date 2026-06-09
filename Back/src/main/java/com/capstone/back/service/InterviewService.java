@@ -37,13 +37,13 @@ public class InterviewService {
         JobPosting jobPosting = jobPostingRepository.findById(jobId)
                 .orElseThrow(() -> new RuntimeException("채용 공고를 찾을 수 없습니다."));
         
-        Portfolio portfolio = portfolioRepository.findByUser(user)
+        Portfolio portfolio = portfolioRepository.findFirstByUserOrderByUpdatedAtDesc(user)
                 .orElseThrow(() -> new RuntimeException("포트폴리오가 없습니다."));
 
         Company company = companyRepository.findByCompanyName(jobPosting.getCompanyName())
                 .orElse(null);
 
-        Resume resume = resumeRepository.findByUserAndJobPosting(user, jobPosting).orElse(null);
+        Resume resume = resumeRepository.findFirstByUserAndJobPostingOrderByCreatedAtDesc(user, jobPosting).orElse(null);
 
         // 면접 유형 매핑 보완 (입력값이 'personalityinterviewer' 등으로 올 경우 처리)
         Interview.InterviewType interviewType;

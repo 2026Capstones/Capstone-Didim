@@ -110,13 +110,38 @@ function stopRecorder(recorder: MediaRecorder | null, chunks: Blob[]) {
 }
 
 function InterviewPage() {
+    // 1. 모든 상태(State) 선언을 상단으로 이동
     const [history, setHistory] = useState<any[]>([]);
     const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(null);
     const [jobPickerOpen, setJobPickerOpen] = useState(false);
     const [savedJobs, setSavedJobs] = useState<JobPosting[]>([]);
     const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
     const [interviewType, setInterviewType] = useState('technical');
-    
+    const [isInterviewPopupOpen, setIsInterviewPopupOpen] = useState(false);
+    const [timeLeft, setTimeLeft] = useState(60);
+    const [currentInterviewId, setCurrentInterviewId] = useState<string | null>(null);
+    const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
+    const [expectedMinutes, setExpectedMinutes] = useState('20');
+    const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+    const [recordingStatus, setRecordingStatus] = useState<'idle' | 'requesting' | 'recording' | 'submitting' | 'submitted' | 'error'>('idle');
+    const [recordingMessage, setRecordingMessage] = useState('');
+
+    // 2. 모든 Ref 선언
+    const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+    const audioRecorderRef = useRef<MediaRecorder | null>(null);
+    const videoRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const videoChunksRef = useRef<Blob[]>([]);
+
+    // Callback Ref를 사용하여 돔 요소가 생성되는 즉시 스트림 바인딩 (Reference 문제 해결)
+    const setVideoRef = (node: HTMLVideoElement | null) => {
+        if (node && mediaStream) {
+            node.srcObject = mediaStream;
+        }
+        videoPreviewRef.current = node;
+    };
+
+    // 3. 비즈니스 로직 및 Effect
     const fetchHistory = async () => {
         try {
             const response = await fetch('/api/interview/list', {
@@ -134,6 +159,19 @@ function InterviewPage() {
             console.error('Fetch interview history error:', error);
         }
     };
+
+    // 1분 타이머 로직
+    useEffect(() => {
+        let timer: any;
+        if (isInterviewPopupOpen && recordingStatus === 'recording' && timeLeft > 0) {
+            timer = setInterval(() => {
+                setTimeLeft((prev) => prev - 1);
+            }, 1000);
+        } else if (timeLeft === 0 && recordingStatus === 'recording') {
+            finishInterviewRecording();
+        }
+        return () => clearInterval(timer);
+    }, [isInterviewPopupOpen, recordingStatus, timeLeft]);
 
     useEffect(() => {
         const fetchJobs = async () => {
@@ -166,18 +204,6 @@ function InterviewPage() {
         fetchHistory();
     }, []);
 
-    const [currentInterviewId, setCurrentInterviewId] = useState<string | null>(null);
-    const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
-    const [expectedMinutes, setExpectedMinutes] = useState('20');
-    const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
-    const [recordingStatus, setRecordingStatus] = useState<'idle' | 'requesting' | 'recording' | 'submitting' | 'submitted' | 'error'>('idle');
-    const [recordingMessage, setRecordingMessage] = useState('');
-    const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
-    const audioRecorderRef = useRef<MediaRecorder | null>(null);
-    const videoRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
-    const videoChunksRef = useRef<Blob[]>([]);
-
     // 선택된 피드백 데이터 매핑
     const selectedRecord = history.find(h => h.interviewId === selectedFeedbackId);
     const selectedFeedback = {
@@ -204,6 +230,37 @@ function InterviewPage() {
         fallbackSummary: '상세 피드백을 확인하세요.'
     }));
 
+    // 레코딩 시작 로직 모듈화 (꼬리 질문 시 재사용)
+    const startMediaRecording = (stream: MediaStream) => {
+        const audioStream = new MediaStream(stream.getAudioTracks());
+        const videoStream = new MediaStream(stream.getVideoTracks());
+
+        const audioMimeType = getSupportedMimeType(['audio/webm;codecs=opus', 'audio/webm']);
+        const videoMimeType = getSupportedMimeType(['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']);
+
+        const audioRecorder = new MediaRecorder(audioStream, audioMimeType ? { mimeType: audioMimeType } : undefined);
+        const videoRecorder = new MediaRecorder(videoStream, videoMimeType ? { mimeType: videoMimeType } : undefined);
+
+        audioChunksRef.current = [];
+        videoChunksRef.current = [];
+        audioRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        };
+        videoRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) videoChunksRef.current.push(event.data);
+        };
+
+        audioRecorderRef.current = audioRecorder;
+        videoRecorderRef.current = videoRecorder;
+        
+        // 데이터를 1초마다 쌓도록 수정 (빈 파일 방지 핵심)
+        audioRecorder.start(1000);
+        videoRecorder.start(1000);
+        
+        setRecordingStatus('recording');
+        setTimeLeft(60); // 타이머 리셋
+    };
+
     useEffect(() => {
         if (!jobPickerOpen) {
             return;
@@ -218,12 +275,6 @@ function InterviewPage() {
     }, [jobPickerOpen]);
 
     useEffect(() => {
-        if (videoPreviewRef.current) {
-            videoPreviewRef.current.srcObject = mediaStream;
-        }
-    }, [mediaStream]);
-
-    useEffect(() => {
         return () => {
             mediaStream?.getTracks().forEach((track) => track.stop());
         };
@@ -236,6 +287,7 @@ function InterviewPage() {
 
         try {
             setRecordingStatus('requesting');
+            setIsInterviewPopupOpen(true); // 팝업 오픈
             setRecordingMessage('면접 세션을 생성하는 중입니다...');
 
             // 1. 백엔드에서 면접 세션 시작 및 첫 질문 받기
@@ -247,7 +299,8 @@ function InterviewPage() {
             });
 
             if (!startResponse.ok) {
-                throw new Error('Failed to start interview session');
+                const errorData = await startResponse.json();
+                throw new Error(errorData.message || 'Failed to start interview session');
             }
 
             const startData = await startResponse.json();
@@ -264,35 +317,8 @@ function InterviewPage() {
                 video: true,
             });
 
-            // 오디오와 비디오 트랙을 분리하여 각각의 레코더에 할당 (NotSupportedError 방지)
-            const audioStream = new MediaStream(stream.getAudioTracks());
-            const videoStream = new MediaStream(stream.getVideoTracks());
-
-            const audioMimeType = getSupportedMimeType(['audio/webm;codecs=opus', 'audio/webm']);
-            const videoMimeType = getSupportedMimeType(['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']);
-
-            const audioRecorder = new MediaRecorder(audioStream, audioMimeType ? { mimeType: audioMimeType } : undefined);
-            const videoRecorder = new MediaRecorder(videoStream, videoMimeType ? { mimeType: videoMimeType } : undefined);
-
-            audioChunksRef.current = [];
-            videoChunksRef.current = [];
-            audioRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunksRef.current.push(event.data);
-                }
-            };
-            videoRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    videoChunksRef.current.push(event.data);
-                }
-            };
-
-            audioRecorderRef.current = audioRecorder;
-            videoRecorderRef.current = videoRecorder;
             setMediaStream(stream);
-            audioRecorder.start();
-            videoRecorder.start();
-            setRecordingStatus('recording');
+            startMediaRecording(stream);
             setRecordingMessage('면접 답변을 녹음/녹화하고 있습니다.');
         } catch (error: any) {
             console.error('Interview start process failed:', error);
@@ -302,6 +328,8 @@ function InterviewPage() {
                 setRecordingMessage('카메라 또는 마이크 권한이 거부되었습니다. 브라우저 주소창 옆의 자물쇠 아이콘을 클릭해 권한을 허용해주세요.');
             } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
                 setRecordingMessage('연결된 마이크 또는 카메라를 찾을 수 없습니다. 장치 연결 상태를 확인해주세요.');
+            } else if (error.message && error.message !== 'Failed to start interview session') {
+                setRecordingMessage(`서버 오류: ${error.message}`);
             } else if (error.message === 'Failed to start interview session') {
                 setRecordingMessage('백엔드 면접 세션 생성에 실패했습니다. 서버 로그를 확인해주세요.');
             } else {
@@ -323,10 +351,15 @@ function InterviewPage() {
                 stopRecorder(audioRecorderRef.current, audioChunksRef.current),
                 stopRecorder(videoRecorderRef.current, videoChunksRef.current),
             ]);
+            
+            // 데이터 유실 여부 확인을 위한 로그
+            console.log('Submission - Audio Size:', audioBlob.size, 'Video Size:', videoBlob.size);
+
             const formData = new FormData();
 
-            formData.append('audioFile', new File([audioBlob], 'interview-answer-audio.webm', { type: audioBlob.type || 'audio/webm' }));
-            formData.append('videoFile', new File([videoBlob], 'interview-answer-video.webm', { type: videoBlob.type || 'video/webm' }));
+            // AI 서버가 기대하는 확장자와 형식으로 변경하여 전송 (.mp3, .mp4)
+            formData.append('audioFile', new File([audioBlob], 'interview-audio.mp3', { type: 'audio/mpeg' }));
+            formData.append('videoFile', new File([videoBlob], 'interview-video.mp4', { type: 'video/mp4' }));
             
             const response = await fetch(`${INTERVIEW_ANSWER_ENDPOINT}/${currentInterviewId}`, {
                 method: 'POST',
@@ -347,16 +380,20 @@ function InterviewPage() {
             const nextQa = nextInterviewData.qaList[nextInterviewData.qaList.length - 1];
             if (nextQa && !nextQa.answer) {
                 setCurrentQuestion(nextQa.question);
+                // 꼬리 질문이 있는 경우: 카메라 스트림을 유지하고 다시 레코딩 시작
+                if (mediaStream) {
+                    startMediaRecording(mediaStream);
+                    setRecordingMessage('다음 질문에 대한 답변을 녹음/녹화하고 있습니다.');
+                }
             } else {
                 setCurrentQuestion("면접이 종료되었습니다. 피드백을 확인하세요.");
+                setIsInterviewPopupOpen(false); // 면접 종료 시 팝업 닫기
+                mediaStream?.getTracks().forEach((track) => track.stop());
+                setMediaStream(null);
+                setRecordingStatus('submitted');
+                setRecordingMessage('모든 답변을 제출했습니다.');
+                fetchHistory(); // 피드백 화면 업데이트를 위해 이력 재조회
             }
-
-            mediaStream?.getTracks().forEach((track) => track.stop());
-            setMediaStream(null);
-            audioRecorderRef.current = null;
-            videoRecorderRef.current = null;
-            setRecordingStatus('submitted');
-            setRecordingMessage('답변 파일을 제출했습니다.');
         } catch {
             setRecordingStatus('error');
             setRecordingMessage('답변 제출 중 오류가 발생했습니다. 백엔드 연결 상태를 확인해주세요.');
@@ -421,7 +458,7 @@ function InterviewPage() {
                     </div>
                     {mediaStream && (
                         <div className="interview-camera-panel">
-                            <video ref={videoPreviewRef} autoPlay playsInline muted />
+                            <video ref={setVideoRef} autoPlay playsInline muted />
                         </div>
                     )}
                     {recordingMessage && <p className={`interview-recording-status status-${recordingStatus}`}>{recordingMessage}</p>}
@@ -549,6 +586,142 @@ function InterviewPage() {
                             )}
                         </div>
                     </section>
+                </div>
+            )}
+
+            {isInterviewPopupOpen && (
+                <div className="modal-backdrop" style={{ backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 1000 }}>
+                    <div className="interview-popup-card" style={{ 
+                        width: '95%', 
+                        maxWidth: '1300px', 
+                        height: '90vh', 
+                        backgroundColor: '#fff', 
+                        borderRadius: '16px', 
+                        display: 'flex', 
+                        overflow: 'hidden',
+                        position: 'relative',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                    }}>
+                        {/* 좌측: 캠 화면 */}
+                        <div style={{ flex: 1, backgroundColor: '#000', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <video 
+                                ref={setVideoRef} 
+                                autoPlay 
+                                playsInline 
+                                muted 
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                            />
+                            {recordingStatus === 'recording' && (
+                                <div style={{ position: 'absolute', top: '24px', left: '24px', display: 'flex', alignItems: 'center', gap: '8px', color: '#ff4d4f', fontWeight: '800', backgroundColor: 'rgba(0,0,0,0.4)', padding: '6px 12px', borderRadius: '20px' }}>
+                                    <span style={{ width: '10px', height: '10px', backgroundColor: '#ff4d4f', borderRadius: '50%', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
+                                    REC
+                                </div>
+                            )}
+                            <style>{`
+                                @keyframes pulse {
+                                    0% { opacity: 1; }
+                                    50% { opacity: 0.4; }
+                                    100% { opacity: 1; }
+                                }
+                            `}</style>
+                        </div>
+
+                        {/* 우측: 정보 및 컨트롤 */}
+                        <div style={{ 
+                            width: '420px', 
+                            padding: '32px', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            gap: '20px', 
+                            backgroundColor: '#f9fbff',
+                            borderLeft: '1px solid #e2e8f3',
+                            overflowY: 'auto' // 스크롤 가능하게 수정
+                        }}>
+                            {/* 타이머 섹션 */}
+                            <div style={{ 
+                                textAlign: 'center', 
+                                padding: '20px', 
+                                backgroundColor: '#fff', 
+                                borderRadius: '12px', 
+                                border: '1px solid #e2e8f3',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                            }}>
+                                <div style={{ 
+                                    fontSize: '3.5rem', 
+                                    fontFamily: 'monospace',
+                                    fontWeight: '800', 
+                                    lineHeight: '1',
+                                    color: timeLeft <= 10 ? '#ff4d4f' : '#22296f' 
+                                }}>
+                                    00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+                                </div>
+                                <p style={{ color: '#64748b', marginTop: '10px', fontSize: '0.9rem', fontWeight: '600' }}>남은 답변 시간</p>
+                            </div>
+
+                            {/* 질문 섹션 */}
+                            <div style={{ flex: 1, minHeight: '0', display: 'flex', flexDirection: 'column' }}>
+                                <h3 style={{ fontSize: '0.95rem', color: '#22296f', fontWeight: '900', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '1.2rem' }}>💬</span> AI 면접관의 질문
+                                </h3>
+                                <div style={{ 
+                                    flex: 1,
+                                    padding: '24px', 
+                                    backgroundColor: '#fff', 
+                                    borderRadius: '12px', 
+                                    border: '1px solid #e2e8f3',
+                                    fontSize: '1.15rem',
+                                    lineHeight: '1.6',
+                                    fontWeight: '700',
+                                    color: '#1e293b',
+                                    overflowY: 'auto',
+                                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)'
+                                }}>
+                                    {currentQuestion || '질문을 생성하는 중입니다...'}
+                                </div>
+                            </div>
+
+                            {/* 컨트롤 섹션 */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: 'auto' }}>
+                                {recordingMessage && (
+                                    <p style={{ 
+                                        fontSize: '0.85rem', 
+                                        color: recordingStatus === 'error' ? '#ff4d4f' : '#64748b', 
+                                        textAlign: 'center',
+                                        backgroundColor: '#fff',
+                                        padding: '8px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #e2e8f3'
+                                    }}>
+                                        {recordingMessage}
+                                    </p>
+                                )}
+                                <button
+                                    type="button"
+                                    className="primary-action-button"
+                                    style={{ height: '56px', fontSize: '1.1rem', cursor: recordingStatus === 'submitting' ? 'not-allowed' : 'pointer' }}
+                                    disabled={recordingStatus === 'submitting'}
+                                    onClick={finishInterviewRecording}
+                                >
+                                    {recordingStatus === 'submitting' ? '답변 처리 중...' : '답변 전송'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="secondary-action-button"
+                                    style={{ height: '48px', color: '#64748b' }}
+                                    onClick={() => {
+                                        if (window.confirm('면접을 중단하시겠습니까? 기록이 저장되지 않을 수 있습니다.')) {
+                                            setIsInterviewPopupOpen(false);
+                                            mediaStream?.getTracks().forEach(t => t.stop());
+                                            setMediaStream(null);
+                                            setRecordingStatus('idle');
+                                        }
+                                    }}
+                                >
+                                    면접 중단
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </section>

@@ -83,6 +83,7 @@ function CoverLetterPage() {
     });
 
     const isNewDraft = id === 'new-draft';
+    const [currentJobId, setCurrentJobId] = useState<string | null>(null);
     const [coverLetterTitle, setCoverLetterTitle] = useState(isNewDraft ? '새 자소서 초안' : '');
     const [draftContent, setDraftContent] = useState(isNewDraft ? 'AI가 자소서를 작성하고 있습니다...' : '자소서를 불러오는 중입니다...');
     const [saveStatus, setSaveStatus] = useState('');
@@ -102,13 +103,19 @@ function CoverLetterPage() {
                     setDocument({
                         company: data.companyName,
                         role: data.jobTitle,
-                        feedback: [], // 백엔드에서 피드백을 주지 않는다면 빈 배열
+                        feedback: [],
                     });
                     setCoverLetterTitle(`${data.companyName} - ${data.jobTitle}`);
                     setDraftContent(data.generatedText);
-                } else if (isNewDraft) {
-                    // 새 초안 생성 시도
-                    generateResume(jobId);
+                    setCurrentJobId(jobId); // 현재 jobId 저장
+                } else {
+                    const errorJson = await response.json();
+                    console.error('Fetch resume error message:', errorJson.message);
+                    if (isNewDraft) {
+                        generateResume(jobId);
+                    } else {
+                        setDraftContent(`자소서를 불러오지 못했습니다: ${errorJson.message}`);
+                    }
                 }
             } catch (error) {
                 console.error('Fetch resume error:', error);
@@ -133,6 +140,7 @@ function CoverLetterPage() {
                     });
                     setCoverLetterTitle(`${data.companyName} - ${data.jobTitle}`);
                     setDraftContent(data.generatedText);
+                    setCurrentJobId(jobId); // 생성된 후에도 jobId 유지
                 } else {
                     setDraftContent('자소서 생성에 실패했습니다.');
                 }
@@ -159,12 +167,15 @@ function CoverLetterPage() {
     };
 
     const handleSave = async () => {
-        const targetJobId = isNewDraft ? jobIdFromQuery : id;
-        if (!targetJobId) return;
+        const targetId = currentJobId || (isNewDraft ? jobIdFromQuery : id);
+        if (!targetId || targetId === 'new-draft') {
+            setSaveStatus('올바른 공고 정보를 찾을 수 없습니다.');
+            return;
+        }
 
         try {
             setSaveStatus('저장 중...');
-            const response = await fetch(`/api/resume/${targetJobId}`, {
+            const response = await fetch(`/api/resume/${targetId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -176,7 +187,8 @@ function CoverLetterPage() {
             if (response.ok) {
                 setSaveStatus('저장되었습니다.');
             } else {
-                setSaveStatus('저장에 실패했습니다.');
+                const errData = await response.json();
+                setSaveStatus(`저장 실패: ${errData.message || '알 수 없는 오류'}`);
             }
         } catch (error) {
             console.error('Save resume error:', error);

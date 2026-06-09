@@ -79,39 +79,40 @@ function JobPostingsPage() {
         fetchMatchScore();
     }, [selectedJob]);
 
-    useEffect(() => {
-        const fetchJobs = async () => {
-            setIsLoading(true);
-            try {
-                const response = await fetch('/api/job-postings', {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                    }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.data) {
-                        const mappedJobs = data.data.map((job: any) => ({
-                            id: job.jobId,
-                            company: job.companyName,
-                            title: job.jobTitle,
-                            location: '-',
-                            deadline: job.deadline ? String(job.deadline) : '상시채용',
-                            match: 0, // 매칭 점수는 모달에서 별도 계산
-                            tags: [],
-                            saved: false,
-                            description: job.description,
-                            requirements: job.requirements
-                        }));
-                        setJobItems(mappedJobs);
-                    }
+    const fetchJobs = async () => {
+        setIsLoading(true);
+        try {
+            const response = await fetch('/api/job-postings', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
                 }
-            } catch (error) {
-                console.error('Fetch jobs error:', error);
-            } finally {
-                setIsLoading(false);
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.data) {
+                    const mappedJobs = data.data.map((job: any) => ({
+                        id: job.jobId,
+                        company: job.companyName,
+                        title: job.jobTitle,
+                        location: '-',
+                        deadline: job.deadline ? String(job.deadline) : '상시채용',
+                        match: 0, // 매칭 점수는 모달에서 별도 계산
+                        tags: [],
+                        saved: false,
+                        description: job.description,
+                        requirements: job.requirements
+                    }));
+                    setJobItems(mappedJobs);
+                }
             }
-        };
+        } catch (error) {
+            console.error('Fetch jobs error:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchJobs();
     }, []);
 
@@ -130,7 +131,7 @@ function JobPostingsPage() {
 
             return matchesKeyword && matchesRegion;
         });
-    }, [keyword, region]);
+    }, [keyword, region, jobItems]);
     const tabCounts: Record<JobTab, number> = {
         all: baseFilteredJobs.length,
         saved: baseFilteredJobs.filter((job) => savedJobIds.has(job.id)).length,
@@ -196,7 +197,28 @@ function JobPostingsPage() {
 
             <section className="jobs-search-panel">
                 <label className="jobs-search-main">
-                    <span>공고 검색</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span>공고 검색</span>
+                        <button 
+                            type="button" 
+                            onClick={() => fetchJobs()} 
+                            disabled={isLoading}
+                            className="secondary-action-button"
+                            style={{ 
+                                height: '32px', 
+                                padding: '0 10px', 
+                                fontSize: '0.85rem', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                border: '1px solid #dbe3ef',
+                                backgroundColor: '#fff'
+                            }}
+                        >
+                            <span style={{ fontSize: '1rem', transform: isLoading ? 'rotate(360deg)' : 'none', transition: 'transform 0.5s ease' }}>↻</span>
+                            {isLoading ? '갱신 중...' : '공고 새로고침'}
+                        </button>
+                    </div>
                     <input
                         value={keyword}
                         onChange={(event) => {
